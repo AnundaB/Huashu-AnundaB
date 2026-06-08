@@ -1,6 +1,6 @@
 # Program: Local Research Ingestion
-Version: 1.2.0
-Status: Phase-1-Complete-Phase-2A-Design-Complete
+Version: 1.3.0
+Status: Phase-2C-Complete-Phase-2D-Planned
 
 This program specification outlines the technical contract, execution steps, and validation rules for the local research ingestion script.
 
@@ -13,10 +13,12 @@ This program specification outlines the technical contract, execution steps, and
 python3 scripts/consensus_ingest.py <input_file> [options]
 ```
 - `<input_file>`: Positional argument. Path to a local `.csv` or `.ris` file.
-- `--limit <int>`: Optional. Maximum number of records to process (for quick testing).
-- `--email <str>`: Optional. Email query parameter for Unpaywall requests. Defaults to `consensus-ingest@example.com` or `UNPAYWALL_EMAIL` environment variable.
+- `--limit <int>`: Optional. Maximum number of records to process.
+- `--email <str>`: Optional. Email query parameter for Unpaywall requests. Defaults to `consensus-ingest@example.com`.
 - `--output-dir <str>`: Optional. Base directory for output runs. Defaults to `outputs/consensus`.
-- `--delay <float>`: Optional. Sleep delay (in seconds) between DOI queries. Defaults to `1.0`.
+- `--delay <float>`: Optional. Sleep delay (in seconds) between DOI queries. Defaults to `1.0` (polite rate limit).
+- `--mock-resolver`: Optional. Run in Phase 2B offline mock resolver harness mode.
+- `--resolve-doi`: Optional. Run in Phase 2C real DOI resolver mode using live API lookups.
 
 ### 1.2 Output Layout
 Each execution creates a directory: `<output-dir>/<YYYYMMDD-HHMMSS-ffffff>-consensus-ingest/` (where `ffffff` is microseconds) with the following structure:
@@ -53,32 +55,31 @@ Each execution creates a directory: `<output-dir>/<YYYYMMDD-HHMMSS-ffffff>-conse
 - Create the output folder with current timestamp including microseconds: `YYYYMMDD-HHMMSS-ffffff-consensus-ingest`.
 - Recursively initialize subfolders: `pdfs/` (empty), `md/` (empty), and `metadata/`.
 
-### Step 5: Resolver Loop (Phase 2 - Planned)
-*Note: In Phase 1, this step is bypassed. All records are initialized with a baseline status of `parsed_only`, `resolver_status` = `not_started`, and `resolution_note` = `"Phase 1 parser-only; resolver not run"`. Phase 2 resolver planning is complete, and the design is detailed in [PHASE_2_RESOLVER_PLAN.md](file:///Users/AnundaB/huashu-md-html/docs/PHASE_2_RESOLVER_PLAN.md).*
+### Step 5: Resolver Loop (Phase 2 - Partially Completed)
+*Note: Phase 2 resolver planning (Phase 2A) is complete, and the design is detailed in [PHASE_2_RESOLVER_PLAN.md](file:///Users/AnundaB/huashu-md-html/docs/PHASE_2_RESOLVER_PLAN.md).*
 
-When Phase 2 (Implementation) is activated:
-1. **Unpaywall Query**:
-   - If `doi` is present, query `https://api.unpaywall.org/v2/{doi}?email={email}`.
-   - If a valid `url_for_pdf` is returned, proceed to download.
-   - Sleep for the duration of `--delay` to comply with rate limits.
-2. **PDF Downloader**:
-   - Download the file using a standard browser `User-Agent`.
-   - Write content stream to `pdfs/<record_id>.pdf`.
-   - Verify that the first 4 bytes of the saved file are `%PDF`. If not, delete the file and fail download.
-3. **PDF-to-Markdown Conversion**:
-   - If PDF download was successful, run subprocess:
-     `python3 scripts/any_to_md.py pdfs/<record_id>.pdf -o md/<record_id>.md --quiet`
-   - Mark as `success_pdf` if return code is 0.
-4. **HTML Fallback**:
-   - If PDF download or conversion did not succeed, and the record has a `url`:
-     - Run subprocess:
-       `python3 scripts/html_to_md.py <url> -o md/<record_id>.md --quiet`
-     - Mark as `success_html` if return code is 0.
-5. **Fallback to Failure/Manual States**:
-   - If no PDF was found and no HTML fallback succeeded:
-     - Set status to `no_oa_pdf` if DOI exists.
-     - Set status to `manual_needed` if no DOI and no URL are present.
-     - Set status to `failed` if an download/conversion attempt failed.
+The resolver loop supports two modes in addition to the parser-only baseline:
+1. **Offline Mock Resolver (Completed in Phase 2B)**:
+   - Activated via `--mock-resolver`.
+   - Simulates resolving, downloading, and converting without using network requests.
+   - Writes placeholder `.pdf` and `.md` files labeled internally with `MOCK PLACEHOLDER` headers.
+2. **Real DOI Resolver (Completed in Phase 2C)**:
+   - Activated via `--resolve-doi`.
+   - **OA API Query**:
+     - Query Unpaywall API: `https://api.unpaywall.org/v2/{doi}?email={email}`.
+     - Secondary Fallback: If Unpaywall query fails (e.g., HTTP 422 domain check), query OpenAlex Works API: `https://api.openalex.org/works/https://doi.org/{doi}` with polite `mailto` User-Agent.
+     - Enforces polite rate limits by sleeping `--delay` seconds (defaults to `1.0`s) between network requests.
+   - **PDF Download Test**:
+     - If direct OA PDF URL is returned, download using standard library `urllib` to `pdfs/<record_id>.pdf`.
+     - Verify `%PDF` signature header. If verified, set `status = success_pdf`, and `real_download_performed = True`.
+     - If download fails, catch errors and set `status = failed`.
+   - **No Resolution**:
+     - If DOI exists but no OA PDF is found, set `status = no_oa_pdf`.
+     - If no DOI and no URL exist, set `status = manual_needed`.
+     - No `huashu` conversion is executed in this phase.
+3. **HTML Landing Page extraction (Planned in Phase 2D)**:
+   - If direct PDF is not found, extract and convert article landing pages using `scripts/html_to_md.py` to `md/<record_id>.md`.
+   - Mark `status = success_html` if conversion succeeds. No paywall bypass is performed.
 
 ### Step 6: Write Indexes
 - Append record information and status to `manifest.csv`.

@@ -18,13 +18,13 @@ The **Local Research Ingestion Tool** solves this pain by automating the downloa
 - Duplicate/unique records must be assigned a stable, unique ID (`record_id`) matching:
   `{first_author_lastname}-{year}-{first_3_words_of_title}` (all lowercased and slugified).
 
-### 2.2 Resolving Pipeline (Phase 2 - Planned)
+### 2.2 Resolving Pipeline (Phase 2 - Partially Completed)
 The resolving pipeline is strictly legal, open-access only, and must not bypass paywalls. The complete design details are established in [PHASE_2_RESOLVER_PLAN.md](file:///Users/AnundaB/huashu-md-html/docs/PHASE_2_RESOLVER_PLAN.md):
-1. **Open Access Check**: Query Unpaywall API (`https://api.unpaywall.org/v2/{doi}`) using a rate limit of 1 req/sec. Check OpenAlex Work API as a secondary fallback.
-2. **PDF Download**: Fetch the direct PDF URL from the resolved API, download it to `pdfs/`, and verify the `%PDF` signature header.
-3. **PDF-to-Markdown Conversion**: Convert the PDF using `scripts/any_to_md.py` into `md/`.
-4. **HTML Fallback**: Fetch and convert alternative URL landing pages using `scripts/html_to_md.py` into `md/`.
-5. **No Resolution**: If all lookups fail, set appropriate failure/manual status flags.
+1. **Open Access Check (Completed in Phase 2C)**: Query Unpaywall API (`https://api.unpaywall.org/v2/{doi}`) using a rate limit of 1 req/sec. Check OpenAlex Work API as a secondary fallback if Unpaywall fails.
+2. **PDF Download (Completed in Phase 2C)**: Fetch the direct PDF URL from the resolved API, download it to `pdfs/`, and verify the `%PDF` signature header.
+3. **PDF-to-Markdown Conversion (Planned)**: Convert the PDF using `scripts/any_to_md.py` into `md/`.
+4. **HTML Fallback (Planned in Phase 2D)**: Fetch and convert alternative URL landing pages using `scripts/html_to_md.py` into `md/`.
+5. **No Resolution (Completed in Phase 2C)**: If all lookups fail, set appropriate failure/manual status flags (`no_oa_pdf`, `failed`, `manual_needed`).
 
 ---
 
@@ -45,7 +45,7 @@ Each run creates a unique timestamped folder (using microseconds for collision p
 Every record in `manifest.csv` must be labeled with one of the following statuses:
 
 #### Active resolver statuses (Phase 2):
-- `success_pdf`: PDF downloaded and converted successfully.
+- `success_pdf`: PDF downloaded (and converted once conversion is enabled).
 - `success_html`: HTML page retrieved and converted successfully (fallback).
 - `no_oa_pdf`: DOI exists but no OA PDF is found (and no alternative URL succeeded).
 - `failed`: An attempt was made (PDF or HTML) but failed due to network or conversion errors.
@@ -53,9 +53,17 @@ Every record in `manifest.csv` must be labeled with one of the following statuse
 
 #### Parser-only baseline status (Phase 1 - Completed):
 - `parsed_only`: Record parsed and normalized correctly, but resolver/downloads were not run.
-- **Resolver fields**:
-  - `resolver_status` = `not_started`
-  - `resolution_note` = `"Phase 1 parser-only; resolver not run"`
+
+#### Manifest / JSONL Evidence Fields:
+- `resolver_mode`: `"real"`, `"mock"`, or `"offline_parser"`.
+- `network_used`: `True` or `False`.
+- `resolver_source`: `"unpaywall"`, `"openalex"`, or `"none"`.
+- `resolver_http_status`: The HTTP status code of the query.
+- `oa_pdf_url`: The direct PDF URL found.
+- `article_url`: The alternative landing page URL.
+- `real_download_performed`: `True` (if direct OA PDF was downloaded) or `False`.
+- `huashu_conversion_performed`: `False`.
+- `mock_artifact`: `True` (if mock placeholder generated) or `False`.
 
 ---
 
@@ -72,9 +80,11 @@ The tool supports parameters to customize runs:
 ## 5. Development Phases
 
 ### Phase 1: Parser-Only Ingestion Slice (Completed)
-- **Deliverables**: Added `scripts/consensus_ingest.py` parsing CSV and RIS metadata inputs, creating output run directories with microsecond uniqueness, instantiating empty `pdfs/` and `md/` directories, and outputting `manifest.csv`/`papers.jsonl` with `parsed_only` statuses.
+- **Deliverables**: Added `scripts/consensus_ingest.py` parsing CSV and RIS metadata inputs, creating output run directories with microsecond uniqueness, and outputting `manifest.csv`/`papers.jsonl` with `parsed_only` statuses.
 - **Status**: Completed.
 
-### Phase 2: DOI/URL Resolver Pipeline (Next)
-- **Deliverables**: Connect parser output to Unpaywall and OpenAlex lookups, PDF downloader with signature verification, fallback HTML converter using `html_to_md.py`, and populate `pdfs/` and `md/` folders. Complete design is in [PHASE_2_RESOLVER_PLAN.md](file:///Users/AnundaB/huashu-md-html/docs/PHASE_2_RESOLVER_PLAN.md).
-- **Status**: Design Complete (Phase 2A); Implementation Pending (Phase 2B).
+### Phase 2: DOI/URL Resolver Pipeline (Partially Completed)
+- **Phase 2A (Design)**: Established resolver contracts and state machine. **Status**: Completed.
+- **Phase 2B (Offline Mock)**: Added offline `--mock-resolver` harness mode. **Status**: Completed.
+- **Phase 2C (Real DOI Resolver)**: Added live resolver `--resolve-doi` querying Unpaywall (primary) and OpenAlex (fallback), rate limiting, and direct PDF downloading. **Status**: Completed.
+- **Phase 2D (Landing Page HTML Fallback)**: Extract and convert alternative URL landing pages using `scripts/html_to_md.py` to Markdown without paywall bypass. **Status**: Next.

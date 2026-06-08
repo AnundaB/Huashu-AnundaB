@@ -1,6 +1,7 @@
-# Phase 2A Resolver Design Plan
+# Phase 2 Resolver Design & Progress Plan
+**Status**: Phase 2A (Design), Phase 2B (Offline Mock), Phase 2C (Real DOI Resolver) Completed
 
-This document establishes the technical design, API boundaries, state-machine transitions, output schemas, and verification plans for the Phase 2 Resolver Pipeline.
+This document establishes the technical design, API boundaries, state-machine transitions, output schemas, and progress history for the Phase 2 Resolver Pipeline.
 
 ---
 
@@ -116,20 +117,24 @@ Each JSON object contains full normalized metadata plus a rich `resolver_results
 
 ---
 
-## 5. Verification Plan (Phase 2B Implementation)
+## 5. Progress & Roadmap
 
-To safely implement the resolver without querying live networks during building:
+### 5.1 Phase 2B: Offline Mock Resolver Harness (Completed)
+- **Harness Mode**: `--mock-resolver` CLI flag runs resolver simulation without live internet queries.
+- **Wording Semantics**: Clearly records simulated behaviors inside mock files (e.g. `%PDF-1.4\n% MOCK PLACEHOLDER`) and output metadata logs, ensuring that no logs imply real downloads took place.
+- **Evidence Fields**: Logs `resolver_mode = mock`, `network_used = false`, `real_download_performed = false`, `huashu_conversion_performed = false`, `mock_artifact = true`.
 
-### 5.1 Local Mock Server
-1. Create a Python mock HTTP server (`http.server` or `flask` script) running on `localhost:8000`.
-2. Configure the script endpoints:
-   - `/unpaywall/{doi}`: Returns mock JSON with `is_oa: true` and `url_for_pdf: "http://localhost:8000/download/{doi}.pdf"` or `is_oa: false`.
-   - `/download/{doi}.pdf`: Serves a dummy file starting with `%PDF`.
-   - `/html/{doi}`: Serves a simple HTML page containing a dummy article body.
-3. Add an environment variable override in `consensus_ingest.py` (e.g. `UNPAYWALL_API_BASE_URL`) to redirect requests from `https://api.unpaywall.org` to the mock server.
+### 5.2 Phase 2C: Real DOI Resolver Integration (Completed)
+- **Live Integration**: `--resolve-doi` CLI flag performs queries against Unpaywall (primary) and OpenAlex (secondary fallback).
+- **Polite Rate Limiting**: Inter-request delay is enforced using a `--delay` timer (defaults to `1.0` seconds).
+- **PDF Download Test**: If direct OA PDF URL is found, downloads to `pdfs/record_id.pdf` and verifies the `%PDF` signature header. If download succeeds, sets status to `success_pdf` and `real_download_performed = True`.
+- **Error Handling**: Fails gracefully if endpoints return non-200 responses or timeout (status is marked as `failed` or `no_oa_pdf`).
+- **No Paywall Bypass**: Adheres to strict open-access legal boundaries. Bypassing paywalls or using Sci-Hub/proxies is forbidden.
 
-### 5.2 Assertions Checklist
-- **Manifest Count**: Verify row count matches the parsed export.
-- **Microsecond Folders**: Verify separate unique runs generate independent directories.
-- **Valid PDF Headers**: Verify files written in `pdfs/` start with `%PDF`.
-- **Conversion Outputs**: Verify `md/` files are written for `success_pdf` and `success_html` statuses.
+### 5.3 Phase 2D: Landing Page HTML Fallback (Next)
+- **Objective**: Implement Fallback HTML conversion when direct PDFs are unavailable.
+- **Interface & Behavior**:
+  - Activated when `status = success_html`.
+  - Extract page content using `scripts/html_to_md.py` via `trafilatura` to save clean Markdown text into `md/record_id.md`.
+  - Record landing page link in `article_url` and set `markdown_path = md/record_id.md`.
+  - Maintain paywall/login safety boundaries; do not scrape behind login walls.
