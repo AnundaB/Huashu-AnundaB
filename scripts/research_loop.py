@@ -86,6 +86,11 @@ def run_council(chunks: list[dict], scores: np.ndarray) -> dict:
     backtest_cautions = []
     next_questions = []
 
+    claims_by_record = {}
+    methods_by_record = {}
+    weaknesses_by_record = {}
+    backtest_by_record = {}
+
     for idx, (chunk, score) in enumerate(zip(chunks, scores)):
         record_id = chunk["record_id"]
         title = chunk["title"]
@@ -105,7 +110,7 @@ def run_council(chunks: list[dict], scores: np.ndarray) -> dict:
         elif "overfitting" in text_lower:
             scout_claim = "Analyzed model evaluation and compared validation methods (CPCV, Walk-Forward) to control overfitting."
         
-        claims.append(f"- **{record_id}**: {scout_claim}")
+        claims_by_record.setdefault(record_id, set()).add(scout_claim)
         review_log.append(f"- **Literature Scout**: {scout_claim}")
 
         # MATH KERNEL SCOUT
@@ -124,7 +129,7 @@ def run_council(chunks: list[dict], scores: np.ndarray) -> dict:
             math_found.append("LSTM Recurrent Neural Networks")
         
         math_str = ", ".join(math_found) if math_found else "Statistical Hashing Projection"
-        methods.append(f"- **{record_id}**: Utilizes {math_str}")
+        methods_by_record.setdefault(record_id, set()).add(f"Utilizes {math_str}")
         review_log.append(f"- **Math Kernel Scout**: Found math kernel: {math_str}")
 
         # SIGNAL SKEPTIC
@@ -140,7 +145,7 @@ def run_council(chunks: list[dict], scores: np.ndarray) -> dict:
             skeptic_note = "Mock placeholder run. No real empirical verification performed."
             sentiment = "Mock Neutral"
             
-        weaknesses.append(f"- **{record_id}**: {skeptic_note}")
+        weaknesses_by_record.setdefault(record_id, set()).add(skeptic_note)
         review_log.append(f"- **Signal Skeptic**: {skeptic_note}")
 
         # BACKTEST METHODOLOGIST
@@ -152,7 +157,7 @@ def run_council(chunks: list[dict], scores: np.ndarray) -> dict:
         elif "mock" in text_lower:
             method_note = "Needs validation on real historical stock/index returns."
 
-        backtest_cautions.append(f"- **{record_id}**: {method_note}")
+        backtest_by_record.setdefault(record_id, set()).add(method_note)
         review_log.append(f"- **Backtest Methodologist**: Recommended validation: {method_note}")
 
         # EVIDENCE CURATOR
@@ -167,6 +172,23 @@ def run_council(chunks: list[dict], scores: np.ndarray) -> dict:
             "recommended_validation": method_note,
             "relevance_score": f"{score:.4f}"
         })
+
+    # Limit and build claims list (max 2 unique items per record_id)
+    for record_id, record_claims in sorted(claims_by_record.items()):
+        for clm in sorted(list(record_claims))[:2]:
+            claims.append(f"- **{record_id}**: {clm}")
+
+    for record_id, record_methods in sorted(methods_by_record.items()):
+        for mth in sorted(list(record_methods))[:2]:
+            methods.append(f"- **{record_id}**: {mth}")
+
+    for record_id, record_weaknesses in sorted(weaknesses_by_record.items()):
+        for wk in sorted(list(record_weaknesses))[:2]:
+            weaknesses.append(f"- **{record_id}**: {wk}")
+
+    for record_id, record_backtest in sorted(backtest_by_record.items()):
+        for bt in sorted(list(record_backtest))[:2]:
+            backtest_cautions.append(f"- **{record_id}**: {bt}")
 
     # Aggregated datasets
     datasets.append("- S&P 500 Daily Time Series (Wang 2025)")
@@ -188,6 +210,7 @@ def run_council(chunks: list[dict], scores: np.ndarray) -> dict:
         "backtest_cautions": "\n".join(backtest_cautions),
         "next_questions": "\n".join(next_questions)
     }
+
 
 
 def main() -> int:
@@ -274,16 +297,32 @@ def main() -> int:
         f.write(f"# Unresolved Council Hypotheses & Follow-up Questions\n\n")
         f.write(council_results["next_questions"])
 
+    # Warn when corpus is small
+    corpus_size_warning = None
+    manifest_path = os.path.join(memory_dir, "index_manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest_data = json.load(f)
+                total_chunks = manifest_data.get("total_chunks", 0)
+                if total_chunks < 10:
+                    corpus_size_warning = f"> [!WARNING]\n> The indexed research corpus contains only {total_chunks} chunks. Synthesized findings may have limited literature coverage.\n\n"
+        except Exception:
+            pass
+
     # Write research_note.md
     note_path = os.path.join(run_output_dir, "research_note.md")
     with open(note_path, "w", encoding="utf-8") as f:
         f.write(f"# Research Note: Synthesis on '{args.question}'\n\n")
+        if corpus_size_warning:
+            f.write(corpus_size_warning)
         f.write(f"- **Recommendation**: {recommendation.upper()}\n")
         f.write(f"- **Max Query Score**: {max_score:.4f}\n")
         f.write(f"- **Indexed Directory**: {os.path.basename(memory_dir)}\n\n")
         
         f.write(f"## 1. Core Literature Claims\n")
         f.write(council_results["claims"] + "\n\n")
+
         
         f.write(f"## 2. Mathematical Kernels & Methodologies\n")
         f.write(council_results["methods"] + "\n\n")

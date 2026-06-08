@@ -1,6 +1,7 @@
 # Program: Local Research Ingestion
-Version: 1.4.0
-Status: Phase-6-Complete
+Version: 2.0.0
+Status: Complete
+
 
 This program specification outlines the technical contract, execution steps, and validation rules for the local research ingestion script.
 
@@ -75,3 +76,25 @@ A run is considered successful if:
 1. **Manifest Parity**: The number of lines in `manifest.csv` (excluding headers) is equal to input papers.
 2. **Quality Gate Mapping**: Every record includes `extraction_quality_status` and `extraction_quality_note` fields.
 3. **No Unrequested Network Access**: Live networks queries are executed only when `--resolve-doi` is explicitly specified.
+
+---
+
+## 4. Unified Huashu CLI Wrapper Contract
+The `scripts/huashu_cli.py` script acts as the main command entry point for easy invocation.
+
+### 4.1 CLI Commands:
+- `python3 scripts/huashu_cli.py -ingest <filename> [--limit <num>]` (Ingest and build vector index)
+- `python3 scripts/huashu_cli.py -search "<query>"` (Search local vector memory database)
+- `python3 scripts/huashu_cli.py -note "<question>"` (Synthesize note over retrieved chunks)
+- `python3 scripts/huashu_cli.py -latest` (Display run directories of the latest pipeline states)
+
+### 4.2 Shell / Alias installation:
+To run the tool as `huashu` from anywhere:
+```bash
+alias huashu="python3 $(pwd)/scripts/huashu_cli.py"
+```
+Or copy/link a wrapper script to your path:
+```bash
+ln -sf $(pwd)/scripts/huashu_cli.py /usr/local/bin/huashu
+```
+

@@ -1,0 +1,485 @@
+#!/usr/bin/env python3
+"""
+huashu_cli.py — Top-level interactive and non-interactive command-line interface
+for the Local Research Ingestion Pipeline.
+"""
+
+import os
+import sys
+import subprocess
+import csv
+import json
+import re
+
+# Find repository root
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def find_input_file(filename: str) -> str | None:
+    """
+    Finds the input file from:
+      1. exact path
+      2. current working directory
+      3. inputs/consensus/ relative to repo
+      4. ~/Downloads/
+    """
+    # 1. Exact path
+    if os.path.exists(filename):
+        return os.path.abspath(filename)
+    
+    # 2. CWD relative path
+    cwd_path = os.path.join(os.getcwd(), filename)
+    if os.path.exists(cwd_path):
+        return os.path.abspath(cwd_path)
+    
+    # 3. inputs/consensus/ in the repo
+    repo_inputs = os.path.join(REPO_ROOT, "inputs", "consensus", filename)
+    if os.path.exists(repo_inputs):
+        return os.path.abspath(repo_inputs)
+    
+    # 4. ~/Downloads/
+    downloads = os.path.expanduser("~/Downloads")
+    downloads_path = os.path.join(downloads, filename)
+    if os.path.exists(downloads_path):
+        return os.path.abspath(downloads_path)
+    
+    return None
+
+
+def get_latest_run_dir() -> str | None:
+    """
+    Finds the latest run directory by reading outputs/latest_ingest.txt
+    or scanning outputs/consensus/.
+    """
+    latest_file_path = os.path.join(REPO_ROOT, "outputs", "latest_ingest.txt")
+    if os.path.exists(latest_file_path):
+        with open(latest_file_path, "r", encoding="utf-8") as f:
+            path = f.read().strip()
+            if os.path.exists(path):
+                return path
+
+    consensus_dir = os.path.join(REPO_ROOT, "outputs", "consensus")
+    if os.path.exists(consensus_dir):
+        subdirs = [os.path.join(consensus_dir, d) for d in os.listdir(consensus_dir)]
+        subdirs = [d for d in subdirs if os.path.isdir(d) and os.path.exists(os.path.join(d, "metadata", "papers.jsonl"))]
+        if subdirs:
+            # Sort by directory name (format is YYYYMMDD-HHMMSS-...)
+            subdirs.sort(key=lambda x: os.path.basename(x))
+            return subdirs[-1]
+    
+    return None
+
+
+def get_latest_research_run() -> tuple[str, str] | tuple[None, None]:
+    """
+    Finds the latest research run folder under outputs/research-runs/
+    and returns (run_folder, note_path).
+    """
+    runs_dir = os.path.join(REPO_ROOT, "outputs", "research-runs")
+    if os.path.exists(runs_dir):
+        subdirs = [os.path.join(runs_dir, d) for d in os.listdir(runs_dir)]
+        subdirs = [d for d in subdirs if os.path.isdir(d) and os.path.exists(os.path.join(d, "research_note.md"))]
+        if subdirs:
+            subdirs.sort(key=lambda x: os.path.basename(x))
+            latest_run = subdirs[-1]
+            return latest_run, os.path.join(latest_run, "research_note.md")
+    return None, None
+
+
+def write_latest_run_dir(run_dir: str):
+    """
+    Saves the latest run directory pointer.
+    """
+    outputs_dir = os.path.join(REPO_ROOT, "outputs")
+    os.makedirs(outputs_dir, exist_ok=True)
+    latest_file_path = os.path.join(outputs_dir, "latest_ingest.txt")
+    with open(latest_file_path, "w", encoding="utf-8") as f:
+        f.write(run_dir)
+
+
+def print_ingest_summary(run_dir: str):
+    """
+    Reads manifest.csv and index_manifest.json to print a formatted count summary.
+    """
+    manifest_path = os.path.join(run_dir, "metadata", "manifest.csv")
+    if not os.path.exists(manifest_path):
+        print(f"[warn] manifest.csv not found under {run_dir}")
+        return
+    
+    total = 0
+    resolved_doi = 0
+    oa_pdf_found = 0
+    pdf_downloaded = 0
+    html_fallback = 0
+    md_converted = 0
+    quality_passed = 0
+    manual_needed = 0
+    failed_forbidden = 0
+    
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            total += 1
+            if row.get("doi"):
+                resolved_doi += 1
+            if row.get("oa_pdf_url"):
+                oa_pdf_found += 1
+            if row.get("real_download_performed") == "True":
+                pdf_downloaded += 1
+            if row.get("html_to_md_performed") == "True":
+                html_fallback += 1
+            if row.get("markdown_path"):
+                md_converted += 1
+            if row.get("extraction_quality_status") == "passed":
+                quality_passed += 1
+            if row.get("status") == "manual_needed":
+                manual_needed += 1
+            if row.get("status") == "failed":
+                failed_forbidden += 1
+                
+    total_chunks = 0
+    manifest_json_path = os.path.join(run_dir, "memory", "index_manifest.json")
+    if os.path.exists(manifest_json_path):
+        try:
+            with open(manifest_json_path, "r", encoding="utf-8") as jf:
+                manifest_data = json.load(jf)
+                total_chunks = manifest_data.get("total_chunks", 0)
+        except Exception:
+            pass
+            
+    print("\n" + "="*50)
+    print("INGESTION SUMMARY")
+    print("="*50)
+    print(f"Total Records:             {total}")
+    print(f"Parsed Records:            {total}")
+    print(f"Resolved DOI:              {resolved_doi}")
+    print(f"OA PDF Found:              {oa_pdf_found}")
+    print(f"PDF Downloaded:            {pdf_downloaded}")
+    print(f"HTML Fallback Success:     {html_fallback}")
+    print(f"Markdown Converted:        {md_converted}")
+    print(f"Quality Passed:            {quality_passed}")
+    print(f"Memory Chunks Indexed:     {total_chunks}")
+    print(f"Manual Needed:             {manual_needed}")
+    print(f"Failed/Forbidden:          {failed_forbidden}")
+    print("="*50)
+    print(f"Ingestion Output Path:     {run_dir}")
+    print(f"Markdown Folder:           {os.path.join(run_dir, 'md')}")
+    print(f"Memory Index Folder:       {os.path.join(run_dir, 'memory')}")
+    print(f"Manifest Path:             {manifest_path}")
+    print("="*50 + "\n")
+
+
+def run_ingest(filename: str, limit: str | None = None) -> bool:
+    """
+    Executes raw parsing, DOI resolution, PDF/HTML fetching, Markdown conversion,
+    and automatic memory indexing.
+    """
+    resolved_file = find_input_file(filename)
+    if not resolved_file:
+        print(f"[error] Could not locate input file: '{filename}'")
+        print("Tried: exact path, CWD, inputs/consensus/ in repo, and ~/Downloads/.")
+        return False
+    
+    print(f"Resolved input file to: {resolved_file}")
+    
+    python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
+    if not os.path.exists(python_exe):
+        python_exe = "python3"
+        
+    ingest_script = os.path.join(REPO_ROOT, "scripts", "consensus_ingest.py")
+    
+    # Build consensus_ingest command args
+    cmd = [
+        python_exe,
+        ingest_script,
+        "--resolve-doi",
+        "--download-pdf",
+        "--html-fallback",
+        "--convert-md"
+    ]
+    if limit:
+        cmd.extend(["--limit", limit])
+    cmd.append(resolved_file)
+    
+    print(f"Running Ingestion: {' '.join(cmd)}")
+    
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        # Scan stdout to find the output folder
+        run_dir = None
+        for line in result.stdout.splitlines():
+            print(line)
+            if "Output folder path:" in line:
+                run_dir = line.split("Output folder path:", 1)[1].strip()
+        
+        # If output folder path wasn't captured, check stderr or try finding the latest run dir
+        if not run_dir:
+            # Fallback
+            run_dir = get_latest_run_dir()
+            
+        if not run_dir or not os.path.exists(run_dir):
+            print("[error] Ingestion completed but output run directory could not be resolved.")
+            return False
+        
+        # Save pointer
+        write_latest_run_dir(run_dir)
+        
+        # Build memory index automatically
+        print("\n[info] Ingestion complete. Building memory index automatically...")
+        index_script = os.path.join(REPO_ROOT, "scripts", "research_memory_index.py")
+        build_cmd = [python_exe, index_script, "build", run_dir]
+        print(f"Running Memory Indexer: {' '.join(build_cmd)}")
+        subprocess.run(build_cmd, check=True)
+        
+        # Print summary
+        print_ingest_summary(run_dir)
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"\n[error] Ingestion command failed with exit status {e.returncode}.")
+        print("Stderr:\n", e.stderr)
+        return False
+
+
+def run_search(query: str) -> bool:
+    """
+    Performs vector similarity search on the latest indexed memory directory.
+    """
+    run_dir = get_latest_run_dir()
+    if not run_dir:
+        print("No memory index found. Run huashu -ingest <file> first.")
+        return False
+        
+    python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
+    if not os.path.exists(python_exe):
+        python_exe = "python3"
+        
+    index_script = os.path.join(REPO_ROOT, "scripts", "research_memory_index.py")
+    cmd = [python_exe, index_script, "query", run_dir, query]
+    
+    try:
+        subprocess.run(cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[error] Query failed: {e}")
+        return False
+
+
+def run_note(question: str) -> bool:
+    """
+    Runs the automated Research Council loop to synthesize findings into a markdown note.
+    """
+    run_dir = get_latest_run_dir()
+    if not run_dir:
+        print("No memory index found. Run huashu -ingest <file> first.")
+        return False
+        
+    python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
+    if not os.path.exists(python_exe):
+        python_exe = "python3"
+        
+    loop_script = os.path.join(REPO_ROOT, "scripts", "research_loop.py")
+    cmd = [python_exe, loop_script, run_dir, question]
+    
+    print(f"Running Research Council Loop: {' '.join(cmd)}")
+    
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        print(result.stdout)
+        
+        # Parse run output dir from output
+        note_dir = None
+        for line in result.stdout.splitlines():
+            if "Research Run Folder:" in line:
+                note_dir = line.split("Research Run Folder:", 1)[1].strip()
+                
+        if not note_dir:
+            # Fallback
+            runs_dir = os.path.join(REPO_ROOT, "outputs", "research-runs")
+            if os.path.exists(runs_dir):
+                subdirs = [os.path.join(runs_dir, d) for d in os.listdir(runs_dir)]
+                if subdirs:
+                    subdirs.sort(key=lambda x: os.path.basename(x))
+                    note_dir = subdirs[-1]
+                    
+        if note_dir:
+            print("\n" + "="*50)
+            print("RESEARCH NOTES GENERATED")
+            print("="*50)
+            print(f"Research Note Path:        {os.path.join(note_dir, 'research_note.md')}")
+            print(f"Evidence Table Path:       {os.path.join(note_dir, 'evidence_table.csv')}")
+            print(f"Next Questions Path:       {os.path.join(note_dir, 'next_questions.md')}")
+            print(f"Run Log Path:              {os.path.join(note_dir, 'run_log.md')}")
+            print("="*50 + "\n")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[error] Research loop failed: {e}")
+        print("Stderr:\n", e.stderr)
+        return False
+
+
+def run_latest():
+    """
+    Displays metadata of the latest ingestion and note runs.
+    """
+    run_dir = get_latest_run_dir()
+    if not run_dir:
+        print("No ingestion runs found yet. Use -ingest to import research papers.")
+        return
+        
+    print("\n" + "="*50)
+    print("LATEST PIPELINE STATE")
+    print("="*50)
+    print(f"Latest Ingestion Run:      {run_dir}")
+    print(f"Markdown Files Folder:     {os.path.join(run_dir, 'md')}")
+    print(f"Memory Index Folder:       {os.path.join(run_dir, 'memory')}")
+    
+    latest_run_dir, note_path = get_latest_research_run()
+    if latest_run_dir:
+        print(f"Latest Research Run:       {latest_run_dir}")
+        print(f"Latest Research Note:      {note_path}")
+    else:
+        print("Latest Research Run:       None (Run huashu -note first)")
+    print("="*50 + "\n")
+
+
+def print_help():
+    """
+    Prints human-friendly CLI usage guidance.
+    """
+    print("""
+Huashu Ingestion & Auto-Research CLI
+
+Usage (Command Line):
+  python3 scripts/huashu_cli.py -ingest <filename> [--limit <num>]  Ingest, clean, convert, and index research papers.
+  python3 scripts/huashu_cli.py -search "<query>"                   Query similarity search over local paper vectors.
+  python3 scripts/huashu_cli.py -note "<question>"                  Run the Research Council to write a markdown note.
+  python3 scripts/huashu_cli.py -latest                             Show directories and details of the latest runs.
+  python3 scripts/huashu_cli.py -help                               Show this help message.
+
+Usage (Interactive Mode):
+  Simply run 'python3 scripts/huashu_cli.py' with no arguments to enter interactive mode:
+  huashu> ingest Research.ris --limit 3
+  huashu> search financial time series denoising
+  huashu> note regime switching and noise control
+  huashu> latest
+  huashu> help
+  huashu> exit
+""")
+
+
+def parse_interactive_command(cmd_line: str) -> tuple[str, str]:
+    """
+    Parses interactive command line input into command and arguments.
+    """
+    cmd_line = cmd_line.strip()
+    if not cmd_line:
+        return "", ""
+    parts = cmd_line.split(maxsplit=1)
+    cmd = parts[0].lower()
+    arg = parts[1] if len(parts) > 1 else ""
+    return cmd, arg
+
+
+def interactive_loop():
+    """
+    Starts the interactive command-line loop.
+    """
+    print("="*60)
+    print(" Huashu Local Ingestion & Auto-Research Council CLI Tool")
+    print(" Type 'help' for commands, 'exit' or 'quit' to exit.")
+    print("="*60 + "\n")
+    
+    while True:
+        try:
+            cmd_line = input("huashu> ")
+            cmd, arg = parse_interactive_command(cmd_line)
+            if not cmd:
+                continue
+                
+            if cmd in ("exit", "quit", "q"):
+                print("Exiting. Goodbye!")
+                break
+            elif cmd == "help":
+                print_help()
+            elif cmd == "ingest":
+                if not arg:
+                    print("[error] Command 'ingest' requires an input filename.")
+                    continue
+                # Split options like --limit
+                arg_parts = arg.split()
+                filename = arg_parts[0]
+                limit = None
+                if len(arg_parts) > 2 and arg_parts[1] == "--limit":
+                    limit = arg_parts[2]
+                run_ingest(filename, limit)
+            elif cmd == "search":
+                if not arg:
+                    print("[error] Command 'search' requires a search query.")
+                    continue
+                # Strip quotes if the user typed them in interactive mode
+                arg = arg.strip('\'"')
+                run_search(arg)
+            elif cmd == "note":
+                if not arg:
+                    print("[error] Command 'note' requires a question or topic.")
+                    continue
+                arg = arg.strip('\'"')
+                run_note(arg)
+            elif cmd == "latest":
+                run_latest()
+            else:
+                print(f"[error] Unknown command: '{cmd}'. Type 'help' for usage examples.")
+        except KeyboardInterrupt:
+            print("\nExiting. Goodbye!")
+            break
+        except Exception as e:
+            print(f"[error] An unexpected error occurred: {e}")
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        # No arguments -> start interactive mode
+        interactive_loop()
+        return 0
+        
+    arg1 = sys.argv[1].lower()
+    
+    if arg1 in ("-help", "--help", "-h", "help"):
+        print_help()
+        return 0
+    elif arg1 in ("-ingest", "--ingest", "ingest"):
+        if len(sys.argv) < 3:
+            print("[error] Please specify a Consensus CSV/RIS filename.")
+            print("Usage: python3 scripts/huashu_cli.py -ingest <filename> [--limit <num>]")
+            return 1
+        filename = sys.argv[2]
+        limit = None
+        if len(sys.argv) > 4 and sys.argv[3] == "--limit":
+            limit = sys.argv[4]
+        success = run_ingest(filename, limit)
+        return 0 if success else 1
+    elif arg1 in ("-search", "--search", "search"):
+        if len(sys.argv) < 3:
+            print("[error] Please specify a search query.")
+            print("Usage: python3 scripts/huashu_cli.py -search \"<query>\"")
+            return 1
+        query = sys.argv[2]
+        success = run_search(query)
+        return 0 if success else 1
+    elif arg1 in ("-note", "--note", "note"):
+        if len(sys.argv) < 3:
+            print("[error] Please specify a research question or topic.")
+            print("Usage: python3 scripts/huashu_cli.py -note \"<question>\"")
+            return 1
+        question = sys.argv[2]
+        success = run_note(question)
+        return 0 if success else 1
+    elif arg1 in ("-latest", "--latest", "latest"):
+        run_latest()
+        return 0
+    else:
+        print(f"[error] Unknown argument: '{sys.argv[1]}'. Use -help to see valid flags.")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

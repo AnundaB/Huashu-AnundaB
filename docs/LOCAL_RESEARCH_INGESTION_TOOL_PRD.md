@@ -120,3 +120,13 @@ The tool supports parameters to customize runs:
 ### Phase 6: Docs Alignment (Completed)
 - Align all documents and schemas.
 - **Status**: Completed.
+
+### Phase 7 & 8: Local Vector Memory & Auto-Research Council (Completed)
+- Implement local MD5 word-hashing dense embeddings (128-dim), index/query via `turbovec.IdMapIndex` adapter, and build Research Council synthesis loop.
+- **Status**: Completed.
+
+### Phase 9: Unified Huashu CLI Wrapper & Interactive Shell (Completed)
+- Add `scripts/huashu_cli.py` top-level easy-to-use CLI and interactive shell wrapper.
+- Commands: `-ingest <file>`, `-search "<query>"`, `-note "<question>"`, `-latest`, `-help`.
+- **Status**: Completed.
+
