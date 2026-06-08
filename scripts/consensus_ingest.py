@@ -356,6 +356,8 @@ def main() -> int:
         huashu_conversion_performed = False
         html_to_md_performed = False
         mock_artifact = False
+        download_http_status = None
+        download_error_detail = ""
 
         # Phase 2C Real DOI Resolver Logic
         if args.resolve_doi:
@@ -386,16 +388,40 @@ def main() -> int:
                             )
                             ctx = ssl.create_default_context()
                             with urllib.request.urlopen(req, context=ctx, timeout=15) as response:
+                                download_http_status = response.getcode()
                                 pdf_data = response.read()
+
+                            if len(pdf_data) >= 4 and pdf_data.startswith(b"%PDF"):
                                 with open(pdf_dest_path, "wb") as f:
                                     f.write(pdf_data)
-
-                            status = "success_pdf"
-                            pdf_download_path = f"pdfs/{pdf_filename}"
-                            real_download_performed = True
-                            downloaded_pdfs += 1
-                            resolution_note = f"Resolved and downloaded PDF successfully via {source} API"
+                                status = "success_pdf"
+                                pdf_download_path = f"pdfs/{pdf_filename}"
+                                real_download_performed = True
+                                downloaded_pdfs += 1
+                                resolution_note = f"Resolved and downloaded PDF successfully via {source} API"
+                            else:
+                                status = "invalid_pdf"
+                                download_error_detail = "Invalid PDF header: does not start with %PDF"
+                                resolution_note = "Downloaded file is not a valid PDF"
+                                if os.path.exists(pdf_dest_path):
+                                    try:
+                                        os.remove(pdf_dest_path)
+                                    except Exception:
+                                        pass
+                        except urllib.error.HTTPError as dl_err:
+                            download_http_status = dl_err.code
+                            download_error_detail = f"HTTP Error {dl_err.code}: {dl_err.reason}"
+                            if dl_err.code in (401, 403):
+                                status = "download_forbidden"
+                            else:
+                                status = "download_failed"
+                            resolution_note = f"OA PDF download failed: {download_error_detail}"
                         except Exception as dl_err:
+                            download_error_detail = str(dl_err)
+                            status = "download_failed"
+                            resolution_note = f"OA PDF download failed: {str(dl_err)}"
+
+                        if status in ("download_forbidden", "download_failed", "invalid_pdf"):
                             # PDF download failed. Attempt HTML fallback!
                             url_to_use = landing_url or url
                             if url_to_use:
@@ -414,30 +440,35 @@ def main() -> int:
                                         markdown_path = f"md/{md_filename}"
                                         huashu_conversion_performed = True
                                         converted_htmls += 1
-                                        resolution_note = f"OA PDF download failed, but HTML landing page converted successfully: {str(dl_err)}"
+                                        resolution_note = f"OA PDF download failed ({download_error_detail or 'invalid header'}), but HTML landing page converted successfully"
                                     else:
                                         stderr_lower = res.stderr.lower()
                                         if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
                                             status = "manual_needed"
-                                            resolution_note = f"OA PDF download failed ({str(dl_err)}) and HTML forbidden: paywalled or blocked; do not bypass"
-                                            error_detail = f"PDF error: {str(dl_err)}. HTML error: {res.stderr.strip()}"
+                                            resolution_note = f"OA PDF download failed ({download_error_detail}) and HTML forbidden: paywalled or blocked; do not bypass"
+                                            error_detail = f"PDF error: {download_error_detail}. HTML error: {res.stderr.strip()}"
                                             manual_needed += 1
                                         else:
                                             status = "failed"
-                                            resolution_note = f"OA PDF download failed ({str(dl_err)}) and HTML fallback failed: {res.stderr.strip()}"
-                                            error_detail = f"PDF error: {str(dl_err)}. HTML error: {res.stderr.strip()}"
+                                            resolution_note = f"OA PDF download failed ({download_error_detail}) and HTML fallback failed: {res.stderr.strip()}"
+                                            error_detail = f"PDF error: {download_error_detail}. HTML error: {res.stderr.strip()}"
                                             failed_attempts += 1
                                 except Exception as html_err:
                                     status = "failed"
-                                    resolution_note = f"OA PDF download failed ({str(dl_err)}) and HTML fallback exception: {str(html_err)}"
-                                    error_detail = f"PDF error: {str(dl_err)}. HTML error: {str(html_err)}"
+                                    resolution_note = f"OA PDF download failed ({download_error_detail}) and HTML fallback exception: {str(html_err)}"
+                                    error_detail = f"PDF error: {download_error_detail}. HTML error: {str(html_err)}"
                                     failed_attempts += 1
                             else:
-                                status = "failed"
-                                resolver_status = "failed"
-                                error_detail = f"Failed to download PDF from {pdf_url}: {str(dl_err)}"
-                                resolution_note = f"OA PDF download failed and no fallback URL exists: {str(dl_err)}"
-                                failed_attempts += 1
+                                if status == "download_forbidden":
+                                    status = "manual_needed"
+                                    resolution_note = f"OA PDF download forbidden ({download_error_detail}) and no fallback URL exists"
+                                    error_detail = f"PDF download forbidden: {download_error_detail}"
+                                    manual_needed += 1
+                                else:
+                                    # invalid_pdf or download_failed
+                                    error_detail = f"Failed to download PDF from {pdf_url}: {download_error_detail}"
+                                    resolution_note = f"OA PDF download failed ({download_error_detail}) and no fallback URL exists"
+                                    failed_attempts += 1
                     else:
                         # API query succeeded, but no direct PDF. Attempt HTML fallback!
                         url_to_use = landing_url or url
@@ -579,6 +610,7 @@ def main() -> int:
                     markdown_path = f"md/{record_id}.md"
                     mock_artifact = True
                     downloaded_pdfs += 1
+                    download_http_status = 200
 
                     # Create mock files
                     pdf_full_path = os.path.join(pdfs_dir, f"{record_id}.pdf")
@@ -599,6 +631,7 @@ def main() -> int:
                         html_fallback_attempted = True
                         mock_artifact = True
                         converted_htmls += 1
+                        download_http_status = None
 
                         # Create mock file
                         md_full_path = os.path.join(md_dir, f"{record_id}.md")
@@ -608,12 +641,14 @@ def main() -> int:
                         status = "failed"
                         resolver_status = "failed"
                         resolution_note = "Mock only: simulated download failure/timeout; no network run"
+                        download_error_detail = "Mock only: simulated download failure/timeout"
                         failed_attempts += 1
                 elif "10.3390" in doi:
                     # PDF lookup OA found, download/conversion fails
-                    status = "failed"
+                    status = "download_failed"
                     resolver_status = "failed"
                     resolution_note = "Mock only: simulated download failure/timeout; no network run"
+                    download_error_detail = "Mock only: simulated download failure/timeout"
                     failed_attempts += 1
                 elif "10.1002" in doi:
                     # DOI exists, no OA PDF, no URL fallback
@@ -675,7 +710,9 @@ def main() -> int:
             "real_download_performed": real_download_performed,
             "huashu_conversion_performed": huashu_conversion_performed,
             "html_to_md_performed": html_to_md_performed,
-            "mock_artifact": mock_artifact
+            "mock_artifact": mock_artifact,
+            "download_http_status": download_http_status if download_http_status is not None else "",
+            "download_error_detail": download_error_detail
         })
 
         jsonl_records.append({
@@ -705,7 +742,9 @@ def main() -> int:
                 "real_download_performed": real_download_performed,
                 "huashu_conversion_performed": huashu_conversion_performed,
                 "html_to_md_performed": html_to_md_performed,
-                "mock_artifact": mock_artifact
+                "mock_artifact": mock_artifact,
+                "download_http_status": download_http_status,
+                "download_error_detail": download_error_detail
             }
         })
 
@@ -718,7 +757,8 @@ def main() -> int:
             "pdf_download_path", "markdown_path",
             "resolver_mode", "network_used", "resolver_source", "resolver_http_status",
             "oa_pdf_url", "article_url", "real_download_performed",
-            "huashu_conversion_performed", "html_to_md_performed", "mock_artifact"
+            "huashu_conversion_performed", "html_to_md_performed", "mock_artifact",
+            "download_http_status", "download_error_detail"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
