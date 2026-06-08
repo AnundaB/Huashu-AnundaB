@@ -208,6 +208,53 @@ def resolve_doi_real(doi: str, email: str) -> tuple[bool, str, int | None, bool,
             return False, "none", None, False, None, None, f"Unpaywall query error: {str(e)}. OpenAlex fallback error: {str(e2)}."
 
 
+def check_markdown_quality(file_path: str, title: str, doi: str) -> tuple[str, str]:
+    """
+    Checks the quality of the generated Markdown file.
+    Returns: (quality_status, quality_note)
+    Possible statuses: 'passed', 'empty_markdown', 'bad_extraction', 'needs_manual_review'
+    """
+    if not os.path.exists(file_path):
+        return "empty_markdown", "Markdown file does not exist"
+        
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+    except Exception as e:
+        return "bad_extraction", f"Failed to read file: {str(e)}"
+        
+    if not content:
+        return "empty_markdown", "Markdown file is empty"
+        
+    # Check length
+    if len(content) < 100:
+        return "bad_extraction", f"Content is too short ({len(content)} chars)"
+        
+    # Check for nav/footer noise or error boilerplate
+    content_lower = content.lower()
+    error_keywords = [
+        "403 forbidden", "404 not found", "access denied", "robot check", "please enable js",
+        "cloudflare", "just a moment", "checking your browser", "hcaptcha", "recaptcha"
+    ]
+    for kw in error_keywords:
+        if kw in content_lower:
+            return "bad_extraction", f"Error page/boilerplate pattern found: '{kw}'"
+            
+    # Check for too few lines
+    lines = [line.strip() for line in content.split("\n") if line.strip()]
+    if len(lines) < 3:
+        return "bad_extraction", "Content has too few lines"
+        
+    # Check for title keywords
+    title_words = [w.lower() for w in re.sub(r'[^a-zA-Z0-9\s]', '', title).split() if len(w) > 3]
+    if title_words:
+        found_title_words = [w for w in title_words if w in content_lower]
+        if len(found_title_words) == 0:
+            return "needs_manual_review", "None of the title keywords were found in the extracted text"
+            
+    return "passed", "Quality checks passed"
+
+
 def parse_csv(filepath: str) -> list[dict]:
     """Parses Consensus CSV format into normalized record dicts."""
     records = []
@@ -327,6 +374,8 @@ def main() -> int:
     os.makedirs(metadata_dir, exist_ok=True)
 
     existing_ids = set()
+    seen_dois = set()
+    seen_titles = set()
     manifest_rows = []
     jsonl_records = []
 
@@ -375,9 +424,30 @@ def main() -> int:
         download_error_detail = ""
         conversion_status = None
         conversion_error_detail = ""
+        extraction_quality_status = "not_applicable"
+        extraction_quality_note = "No Markdown generated"
+
+        # Check duplicate
+        is_duplicate = False
+        if doi and doi in seen_dois:
+            is_duplicate = True
+        elif title and title.lower() in seen_titles:
+            is_duplicate = True
+
+        if doi:
+            seen_dois.add(doi)
+        if title:
+            seen_titles.add(title.lower())
+
+        if is_duplicate:
+            status = "duplicate"
+            resolver_status = "not_started"
+            resolution_note = "Duplicate record detected; skipping processing"
+            extraction_quality_status = "duplicate"
+            extraction_quality_note = "Duplicate paper in input batch"
 
         # Phase 2C Real DOI Resolver Logic
-        if args.resolve_doi:
+        if args.resolve_doi and not is_duplicate:
             resolver_mode = "real"
             if doi:
                 network_used = True
@@ -584,7 +654,7 @@ def main() -> int:
                     manual_needed += 1
 
         # Phase 2B Mock Resolver Logic
-        elif args.mock_resolver:
+        elif args.mock_resolver and not is_duplicate:
             resolver_mode = "mock"
             if doi:
                 if "10.1371" in doi or "10.1186" in doi:
@@ -610,7 +680,7 @@ def main() -> int:
                             conversion_error_detail = ""
                             md_full_path = os.path.join(md_dir, f"{record_id}.md")
                             with open(md_full_path, "w", encoding="utf-8") as f:
-                                f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated PDF.\n")
+                                f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated PDF. This dummy text is here to ensure the file is longer than the quality gate threshold.\n")
                     else:
                         status = "resolved_pdf"
                         resolution_note = "Mock only: simulated OA PDF success; download not requested"
@@ -632,7 +702,7 @@ def main() -> int:
                             # Create mock file
                             md_full_path = os.path.join(md_dir, f"{record_id}.md")
                             with open(md_full_path, "w", encoding="utf-8") as f:
-                                f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                                f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML. This dummy text is here to ensure the file is longer than the quality gate threshold.\n")
                         else:
                             status = "manual_needed"
                             resolver_status = "not_started"
@@ -676,7 +746,7 @@ def main() -> int:
 
                         md_full_path = os.path.join(md_dir, f"{record_id}.md")
                         with open(md_full_path, "w", encoding="utf-8") as f:
-                            f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                            f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML. This dummy text is here to ensure the file is longer than the quality gate threshold.\n")
                     else:
                         status = "manual_needed"
                         resolver_status = "not_started"
@@ -687,7 +757,7 @@ def main() -> int:
                     resolver_status = "not_started"
                     resolution_note = "No DOI and no URL available"
                     manual_needed += 1
-        else:
+        elif not is_duplicate:
             # Phase 1 baseline error detail mapping
             if not doi and not url:
                 status = "manual_needed"
@@ -695,6 +765,15 @@ def main() -> int:
                 manual_needed += 1
             else:
                 error_detail = "Phase 1 parser-only; resolver not run"
+
+        # Run quality checks if Markdown was generated successfully
+        if status in ("success_pdf", "success_html") and markdown_path:
+            md_full_path = os.path.join(run_dir, markdown_path)
+            q_status, q_note = check_markdown_quality(md_full_path, title, doi)
+            extraction_quality_status = q_status
+            extraction_quality_note = q_note
+            if q_status != "passed":
+                status = q_status
 
         manifest_rows.append({
             "record_id": record_id,
@@ -721,7 +800,9 @@ def main() -> int:
             "download_http_status": download_http_status if download_http_status is not None else "",
             "download_error_detail": download_error_detail,
             "conversion_status": conversion_status if conversion_status is not None else "",
-            "conversion_error_detail": conversion_error_detail
+            "conversion_error_detail": conversion_error_detail,
+            "extraction_quality_status": extraction_quality_status,
+            "extraction_quality_note": extraction_quality_note
         })
 
         jsonl_records.append({
@@ -755,7 +836,9 @@ def main() -> int:
                 "download_http_status": download_http_status,
                 "download_error_detail": download_error_detail,
                 "conversion_status": conversion_status,
-                "conversion_error_detail": conversion_error_detail
+                "conversion_error_detail": conversion_error_detail,
+                "extraction_quality_status": extraction_quality_status,
+                "extraction_quality_note": extraction_quality_note
             }
         })
 
@@ -770,7 +853,8 @@ def main() -> int:
             "oa_pdf_url", "article_url", "real_download_performed",
             "huashu_conversion_performed", "html_to_md_performed", "mock_artifact",
             "download_http_status", "download_error_detail",
-            "conversion_status", "conversion_error_detail"
+            "conversion_status", "conversion_error_detail",
+            "extraction_quality_status", "extraction_quality_note"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
