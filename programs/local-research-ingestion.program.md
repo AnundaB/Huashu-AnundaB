@@ -1,6 +1,6 @@
 # Program: Local Research Ingestion
-Version: 1.1.0
-Status: Phase-1-Complete
+Version: 1.2.0
+Status: Phase-1-Complete-Phase-2A-Design-Complete
 
 This program specification outlines the technical contract, execution steps, and validation rules for the local research ingestion script.
 
@@ -53,10 +53,10 @@ Each execution creates a directory: `<output-dir>/<YYYYMMDD-HHMMSS-ffffff>-conse
 - Create the output folder with current timestamp including microseconds: `YYYYMMDD-HHMMSS-ffffff-consensus-ingest`.
 - Recursively initialize subfolders: `pdfs/` (empty), `md/` (empty), and `metadata/`.
 
-### Step 5: Resolver Loop (Phase 2 - Not Started)
-*Note: In Phase 1, this step is bypassed. All records are initialized with a baseline status of `parsed_only`, `resolver_status` = `not_started`, and `resolution_note` = `"Phase 1 parser-only; resolver not run"`.*
+### Step 5: Resolver Loop (Phase 2 - Planned)
+*Note: In Phase 1, this step is bypassed. All records are initialized with a baseline status of `parsed_only`, `resolver_status` = `not_started`, and `resolution_note` = `"Phase 1 parser-only; resolver not run"`. Phase 2 resolver planning is complete, and the design is detailed in [PHASE_2_RESOLVER_PLAN.md](file:///Users/AnundaB/huashu-md-html/docs/PHASE_2_RESOLVER_PLAN.md).*
 
-When Phase 2 is activated:
+When Phase 2 (Implementation) is activated:
 1. **Unpaywall Query**:
    - If `doi` is present, query `https://api.unpaywall.org/v2/{doi}?email={email}`.
    - If a valid `url_for_pdf` is returned, proceed to download.

@@ -18,13 +18,13 @@ The **Local Research Ingestion Tool** solves this pain by automating the downloa
 - Duplicate/unique records must be assigned a stable, unique ID (`record_id`) matching:
   `{first_author_lastname}-{year}-{first_3_words_of_title}` (all lowercased and slugified).
 
-### 2.2 Resolving Pipeline (Phase 2 - Not Started)
-The resolving pipeline is strictly legal and must not bypass paywalls:
-1. **Open Access Check**: If a DOI exists, query Unpaywall API (`https://api.unpaywall.org/v2/{doi}`).
-2. **PDF Download**: If Unpaywall returns an Open Access PDF URL, download it to `pdfs/` and verify the `%PDF` header signature.
-3. **PDF-to-Markdown Conversion**: Run the downloaded PDF through the existing `scripts/any_to_md.py` converter, saving the result in `md/`.
-4. **HTML Fallback**: If no PDF is found or conversion fails, and an alternative URL exists, run the existing `scripts/html_to_md.py` fetcher and converter, saving the output in `md/`.
-5. **No Resolution**: If no PDF or HTML is resolved, classify the paper for manual action.
+### 2.2 Resolving Pipeline (Phase 2 - Planned)
+The resolving pipeline is strictly legal, open-access only, and must not bypass paywalls. The complete design details are established in [PHASE_2_RESOLVER_PLAN.md](file:///Users/AnundaB/huashu-md-html/docs/PHASE_2_RESOLVER_PLAN.md):
+1. **Open Access Check**: Query Unpaywall API (`https://api.unpaywall.org/v2/{doi}`) using a rate limit of 1 req/sec. Check OpenAlex Work API as a secondary fallback.
+2. **PDF Download**: Fetch the direct PDF URL from the resolved API, download it to `pdfs/`, and verify the `%PDF` signature header.
+3. **PDF-to-Markdown Conversion**: Convert the PDF using `scripts/any_to_md.py` into `md/`.
+4. **HTML Fallback**: Fetch and convert alternative URL landing pages using `scripts/html_to_md.py` into `md/`.
+5. **No Resolution**: If all lookups fail, set appropriate failure/manual status flags.
 
 ---
 
@@ -76,5 +76,5 @@ The tool supports parameters to customize runs:
 - **Status**: Completed.
 
 ### Phase 2: DOI/URL Resolver Pipeline (Next)
-- **Deliverables**: Connect parser output to Unpaywall lookup, PDF downloader with signature verification, fallback HTML converter using `html_to_md.py`, and populate `pdfs/` and `md/` folders.
-- **Status**: Not Started.
+- **Deliverables**: Connect parser output to Unpaywall and OpenAlex lookups, PDF downloader with signature verification, fallback HTML converter using `html_to_md.py`, and populate `pdfs/` and `md/` folders. Complete design is in [PHASE_2_RESOLVER_PLAN.md](file:///Users/AnundaB/huashu-md-html/docs/PHASE_2_RESOLVER_PLAN.md).
+- **Status**: Design Complete (Phase 2A); Implementation Pending (Phase 2B).
