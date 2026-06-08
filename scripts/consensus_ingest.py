@@ -15,12 +15,16 @@ import datetime
 import json
 import os
 import re
+import ssl
 import sys
+import time
+import urllib.error
+import urllib.request
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Local Consensus research ingestion Phase 1 & 2B (Offline).",
+        description="Local Consensus research ingestion pipeline.",
     )
     p.add_argument(
         "input_file",
@@ -43,15 +47,20 @@ def parse_args() -> argparse.Namespace:
         help="Run in Phase 2B offline mock resolver harness mode.",
     )
     p.add_argument(
+        "--resolve-doi",
+        action="store_true",
+        help="Run in Phase 2C real DOI resolver mode using live API lookups.",
+    )
+    p.add_argument(
         "--email",
         default="consensus-ingest@example.com",
-        help="Email address for Unpaywall requests (unused in offline mode).",
+        help="Email address for Unpaywall and OpenAlex requests.",
     )
     p.add_argument(
         "--delay",
         type=float,
         default=1.0,
-        help="Delay in seconds between Unpaywall queries (unused in offline mode).",
+        help="Delay in seconds between API queries (polite rate limit).",
     )
     return p.parse_args()
 
@@ -103,6 +112,84 @@ def generate_record_id(record: dict, existing_ids: set[str]) -> str:
 
     existing_ids.add(candidate)
     return candidate
+
+
+def resolve_doi_real(doi: str, email: str) -> tuple[bool, str, int | None, bool, str | None, str | None, str]:
+    """
+    Resolves a DOI to its Open Access status, PDF URL, and landing page URL.
+    Returns: (success, resolver_source, http_status, is_oa, pdf_url, landing_page_url, error_msg)
+    """
+    doi = doi.strip()
+    unpaywall_url = f"https://api.unpaywall.org/v2/{doi}?email={email}"
+    ctx = ssl.create_default_context()
+    try:
+        req = urllib.request.Request(unpaywall_url, headers={"User-Agent": "consensus-ingest-agent"})
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
+            status_code = response.getcode()
+            data = json.loads(response.read().decode("utf-8"))
+            is_oa = bool(data.get("is_oa"))
+            pdf_url = None
+            landing_page_url = None
+            best_loc = data.get("best_oa_location")
+            if best_loc:
+                pdf_url = best_loc.get("url_for_pdf")
+                landing_page_url = best_loc.get("url")
+            return True, "unpaywall", status_code, is_oa, pdf_url, landing_page_url, ""
+    except urllib.error.HTTPError as e:
+        status_code = e.code
+        try:
+            err_body = e.read().decode("utf-8")
+            err_msg = f"HTTP Error {e.code}: {e.reason} ({err_body.strip()})"
+        except Exception:
+            err_msg = f"HTTP Error {e.code}: {e.reason}"
+
+        # Fallback to OpenAlex
+        openalex_url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+        try:
+            req = urllib.request.Request(
+                openalex_url,
+                headers={"User-Agent": f"mailto:{email}"}
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
+                alex_status = response.getcode()
+                data = json.loads(response.read().decode("utf-8"))
+                oa = data.get("open_access", {})
+                is_oa = bool(oa.get("is_oa"))
+                pdf_url = None
+                landing_page_url = None
+                best_loc = data.get("best_oa_location")
+                if best_loc:
+                    pdf_url = best_loc.get("pdf_url")
+                    landing_page_url = best_loc.get("landing_page_url")
+                return True, "openalex", alex_status, is_oa, pdf_url, landing_page_url, ""
+        except urllib.error.HTTPError as e2:
+            return False, "unpaywall", status_code, False, None, None, f"Unpaywall failed with {status_code}. OpenAlex fallback failed with HTTP {e2.code}: {e2.reason}."
+        except Exception as e2:
+            return False, "unpaywall", status_code, False, None, None, f"Unpaywall failed with {status_code}. OpenAlex fallback error: {str(e2)}."
+    except Exception as e:
+        # General exception (DNS, connection reset, timeout)
+        openalex_url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+        try:
+            req = urllib.request.Request(
+                openalex_url,
+                headers={"User-Agent": f"mailto:{email}"}
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
+                alex_status = response.getcode()
+                data = json.loads(response.read().decode("utf-8"))
+                oa = data.get("open_access", {})
+                is_oa = bool(oa.get("is_oa"))
+                pdf_url = None
+                landing_page_url = None
+                best_loc = data.get("best_oa_location")
+                if best_loc:
+                    pdf_url = best_loc.get("pdf_url")
+                    landing_page_url = best_loc.get("landing_page_url")
+                return True, "openalex", alex_status, is_oa, pdf_url, landing_page_url, ""
+        except urllib.error.HTTPError as e2:
+            return False, "none", None, False, None, None, f"Unpaywall query error: {str(e)}. OpenAlex fallback failed with HTTP {e2.code}: {e2.reason}."
+        except Exception as e2:
+            return False, "none", None, False, None, None, f"Unpaywall query error: {str(e)}. OpenAlex fallback error: {str(e2)}."
 
 
 def parse_csv(filepath: str) -> list[dict]:
@@ -261,12 +348,89 @@ def main() -> int:
         error_detail = ""
         resolver_mode = "offline_parser"
         network_used = False
+        resolver_source = "none"
+        resolver_http_status = None
+        article_url = None
         real_download_performed = False
         huashu_conversion_performed = False
         mock_artifact = False
 
+        # Phase 2C Real DOI Resolver Logic
+        if args.resolve_doi:
+            resolver_mode = "real"
+            if doi:
+                network_used = True
+
+                # Polite rate limiting
+                time.sleep(args.delay)
+
+                success, source, http_status, is_oa, pdf_url, landing_url, err_msg = resolve_doi_real(doi, args.email)
+                resolver_source = source
+                resolver_http_status = http_status
+                oa_pdf_url = pdf_url
+                article_url = landing_url
+
+                if success:
+                    if is_oa and pdf_url:
+                        # Found OA PDF. Attempt to perform a tiny download test
+                        resolver_status = "completed"
+                        pdf_filename = f"{record_id}.pdf"
+                        pdf_dest_path = os.path.join(pdfs_dir, pdf_filename)
+
+                        try:
+                            req = urllib.request.Request(
+                                pdf_url,
+                                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                            )
+                            ctx = ssl.create_default_context()
+                            with urllib.request.urlopen(req, context=ctx, timeout=15) as response:
+                                pdf_data = response.read()
+                                with open(pdf_dest_path, "wb") as f:
+                                    f.write(pdf_data)
+
+                            status = "success_pdf"
+                            pdf_download_path = f"pdfs/{pdf_filename}"
+                            real_download_performed = True
+                            downloaded_pdfs += 1
+                            resolution_note = f"Resolved and downloaded PDF successfully via {source} API"
+                        except Exception as dl_err:
+                            status = "failed"
+                            resolver_status = "failed"
+                            error_detail = f"Failed to download PDF from {pdf_url}: {str(dl_err)}"
+                            resolution_note = f"OA PDF found but download failed: {str(dl_err)}"
+                            failed_attempts += 1
+                    else:
+                        # API query succeeded, but paper is not OA or has no PDF URL
+                        status = "no_oa_pdf"
+                        resolver_status = "unpaywall_lookup" if source == "unpaywall" else "openalex_lookup"
+                        if landing_url:
+                            resolution_note = f"DOI resolved via {source} but no Open Access PDF found; landing page recorded"
+                        else:
+                            resolution_note = f"DOI resolved via {source} but no Open Access PDF or landing page URL found"
+                        no_oa_pdf += 1
+                else:
+                    # Both APIs failed or returned errors
+                    status = "failed"
+                    resolver_status = "failed"
+                    error_detail = err_msg
+                    resolution_note = f"DOI resolver query failed: {err_msg}"
+                    failed_attempts += 1
+            else:
+                # No DOI: check if landing page URL exists
+                if url:
+                    status = "manual_needed"
+                    resolver_status = "not_started"
+                    article_url = url
+                    resolution_note = "No DOI available; landing page URL exists but HTML fallback is not run in this phase"
+                    manual_needed += 1
+                else:
+                    status = "manual_needed"
+                    resolver_status = "not_started"
+                    resolution_note = "No DOI and no URL available"
+                    manual_needed += 1
+
         # Phase 2B Mock Resolver Logic
-        if args.mock_resolver:
+        elif args.mock_resolver:
             resolver_mode = "mock"
             if doi:
                 if "10.1371" in doi or "10.1186" in doi:
@@ -368,6 +532,10 @@ def main() -> int:
             "markdown_path": markdown_path or "",
             "resolver_mode": resolver_mode,
             "network_used": network_used,
+            "resolver_source": resolver_source,
+            "resolver_http_status": resolver_http_status if resolver_http_status is not None else "",
+            "oa_pdf_url": oa_pdf_url or "",
+            "article_url": article_url or "",
             "real_download_performed": real_download_performed,
             "huashu_conversion_performed": huashu_conversion_performed,
             "mock_artifact": mock_artifact
@@ -386,7 +554,7 @@ def main() -> int:
                 "status": status,
                 "resolver_status": resolver_status,
                 "resolution_note": resolution_note,
-                "unpaywall_queried": True if (args.mock_resolver and doi) else False,
+                "unpaywall_queried": True if ((args.mock_resolver or args.resolve_doi) and doi) else False,
                 "oa_pdf_url": oa_pdf_url,
                 "pdf_download_path": pdf_download_path,
                 "html_fallback_attempted": html_fallback_attempted,
@@ -394,6 +562,9 @@ def main() -> int:
                 "error_detail": error_detail or resolution_note,
                 "resolver_mode": resolver_mode,
                 "network_used": network_used,
+                "resolver_source": resolver_source,
+                "resolver_http_status": resolver_http_status,
+                "article_url": article_url,
                 "real_download_performed": real_download_performed,
                 "huashu_conversion_performed": huashu_conversion_performed,
                 "mock_artifact": mock_artifact
@@ -407,7 +578,8 @@ def main() -> int:
             "record_id", "title", "authors", "year", "doi", "url",
             "status", "resolver_status", "resolution_note",
             "pdf_download_path", "markdown_path",
-            "resolver_mode", "network_used", "real_download_performed",
+            "resolver_mode", "network_used", "resolver_source", "resolver_http_status",
+            "oa_pdf_url", "article_url", "real_download_performed",
             "huashu_conversion_performed", "mock_artifact"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -426,7 +598,7 @@ def main() -> int:
     print(f"Records with DOI:   {records_with_doi}")
     print(f"Records with URL:   {records_with_url}")
     print(f"Output folder path: {run_dir}")
-    if args.mock_resolver:
+    if args.mock_resolver or args.resolve_doi:
         print(f"Downloaded PDFs:    {downloaded_pdfs}")
         print(f"Converted HTMLs:    {converted_htmls}")
         print(f"No OA PDF (No PDF):  {no_oa_pdf}")
