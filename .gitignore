@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+outputs/
+inputs/
+*.log
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
