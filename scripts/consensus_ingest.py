@@ -16,6 +16,7 @@ import json
 import os
 import re
 import ssl
+import subprocess
 import sys
 import time
 import urllib.error
@@ -353,6 +354,7 @@ def main() -> int:
         article_url = None
         real_download_performed = False
         huashu_conversion_performed = False
+        html_to_md_performed = False
         mock_artifact = False
 
         # Phase 2C Real DOI Resolver Logic
@@ -394,35 +396,169 @@ def main() -> int:
                             downloaded_pdfs += 1
                             resolution_note = f"Resolved and downloaded PDF successfully via {source} API"
                         except Exception as dl_err:
+                            # PDF download failed. Attempt HTML fallback!
+                            url_to_use = landing_url or url
+                            if url_to_use:
+                                resolver_status = "html_fallback"
+                                md_filename = f"{record_id}.md"
+                                md_dest_path = os.path.join(md_dir, md_filename)
+                                time.sleep(args.delay)
+                                html_to_md_performed = True
+                                try:
+                                    res = subprocess.run(
+                                        [sys.executable, "scripts/html_to_md.py", url_to_use, "-o", md_dest_path, "--quiet"],
+                                        capture_output=True, text=True, timeout=30
+                                    )
+                                    if res.returncode == 0:
+                                        status = "success_html"
+                                        markdown_path = f"md/{md_filename}"
+                                        huashu_conversion_performed = True
+                                        converted_htmls += 1
+                                        resolution_note = f"OA PDF download failed, but HTML landing page converted successfully: {str(dl_err)}"
+                                    else:
+                                        stderr_lower = res.stderr.lower()
+                                        if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
+                                            status = "manual_needed"
+                                            resolution_note = f"OA PDF download failed ({str(dl_err)}) and HTML forbidden: paywalled or blocked; do not bypass"
+                                            error_detail = f"PDF error: {str(dl_err)}. HTML error: {res.stderr.strip()}"
+                                            manual_needed += 1
+                                        else:
+                                            status = "failed"
+                                            resolution_note = f"OA PDF download failed ({str(dl_err)}) and HTML fallback failed: {res.stderr.strip()}"
+                                            error_detail = f"PDF error: {str(dl_err)}. HTML error: {res.stderr.strip()}"
+                                            failed_attempts += 1
+                                except Exception as html_err:
+                                    status = "failed"
+                                    resolution_note = f"OA PDF download failed ({str(dl_err)}) and HTML fallback exception: {str(html_err)}"
+                                    error_detail = f"PDF error: {str(dl_err)}. HTML error: {str(html_err)}"
+                                    failed_attempts += 1
+                            else:
+                                status = "failed"
+                                resolver_status = "failed"
+                                error_detail = f"Failed to download PDF from {pdf_url}: {str(dl_err)}"
+                                resolution_note = f"OA PDF download failed and no fallback URL exists: {str(dl_err)}"
+                                failed_attempts += 1
+                    else:
+                        # API query succeeded, but no direct PDF. Attempt HTML fallback!
+                        url_to_use = landing_url or url
+                        if url_to_use:
+                            resolver_status = "html_fallback"
+                            md_filename = f"{record_id}.md"
+                            md_dest_path = os.path.join(md_dir, md_filename)
+                            time.sleep(args.delay)
+                            html_to_md_performed = True
+                            try:
+                                res = subprocess.run(
+                                    [sys.executable, "scripts/html_to_md.py", url_to_use, "-o", md_dest_path, "--quiet"],
+                                    capture_output=True, text=True, timeout=30
+                                )
+                                if res.returncode == 0:
+                                    status = "success_html"
+                                    markdown_path = f"md/{md_filename}"
+                                    huashu_conversion_performed = True
+                                    converted_htmls += 1
+                                    resolution_note = f"No direct OA PDF, but HTML landing page converted successfully via {source}"
+                                else:
+                                    stderr_lower = res.stderr.lower()
+                                    if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
+                                        status = "manual_needed"
+                                        resolution_note = f"No direct OA PDF. HTML fallback forbidden: paywalled or blocked; do not bypass"
+                                        error_detail = res.stderr.strip()
+                                        manual_needed += 1
+                                    else:
+                                        status = "no_oa_pdf"
+                                        resolution_note = f"No direct OA PDF. HTML fallback failed: {res.stderr.strip()}"
+                                        error_detail = res.stderr.strip()
+                                        no_oa_pdf += 1
+                            except Exception as html_err:
+                                status = "no_oa_pdf"
+                                resolution_note = f"No direct OA PDF. HTML fallback exception: {str(html_err)}"
+                                error_detail = str(html_err)
+                                no_oa_pdf += 1
+                        else:
+                            status = "no_oa_pdf"
+                            resolver_status = "unpaywall_lookup" if source == "unpaywall" else "openalex_lookup"
+                            resolution_note = f"DOI resolved via {source} but no OA PDF or fallback URL found"
+                            no_oa_pdf += 1
+                else:
+                    # API queries failed. Attempt HTML fallback if CSV URL exists!
+                    if url:
+                        resolver_status = "html_fallback"
+                        md_filename = f"{record_id}.md"
+                        md_dest_path = os.path.join(md_dir, md_filename)
+                        time.sleep(args.delay)
+                        html_to_md_performed = True
+                        try:
+                            res = subprocess.run(
+                                [sys.executable, "scripts/html_to_md.py", url, "-o", md_dest_path, "--quiet"],
+                                capture_output=True, text=True, timeout=30
+                            )
+                            if res.returncode == 0:
+                                status = "success_html"
+                                markdown_path = f"md/{md_filename}"
+                                huashu_conversion_performed = True
+                                converted_htmls += 1
+                                resolution_note = f"DOI query failed ({err_msg}), but HTML landing page converted successfully"
+                            else:
+                                stderr_lower = res.stderr.lower()
+                                if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
+                                    status = "manual_needed"
+                                    resolution_note = f"DOI query failed ({err_msg}). HTML fallback forbidden: paywalled or blocked; do not bypass"
+                                    error_detail = f"DOI error: {err_msg}. HTML error: {res.stderr.strip()}"
+                                    manual_needed += 1
+                                else:
+                                    status = "failed"
+                                    resolution_note = f"DOI query failed ({err_msg}) and HTML fallback failed: {res.stderr.strip()}"
+                                    error_detail = f"DOI error: {err_msg}. HTML error: {res.stderr.strip()}"
+                                    failed_attempts += 1
+                        except Exception as html_err:
                             status = "failed"
-                            resolver_status = "failed"
-                            error_detail = f"Failed to download PDF from {pdf_url}: {str(dl_err)}"
-                            resolution_note = f"OA PDF found but download failed: {str(dl_err)}"
+                            resolution_note = f"DOI query failed ({err_msg}) and HTML fallback exception: {str(html_err)}"
+                            error_detail = f"DOI error: {err_msg}. HTML error: {str(html_err)}"
                             failed_attempts += 1
                     else:
-                        # API query succeeded, but paper is not OA or has no PDF URL
-                        status = "no_oa_pdf"
-                        resolver_status = "unpaywall_lookup" if source == "unpaywall" else "openalex_lookup"
-                        if landing_url:
-                            resolution_note = f"DOI resolved via {source} but no Open Access PDF found; landing page recorded"
-                        else:
-                            resolution_note = f"DOI resolved via {source} but no Open Access PDF or landing page URL found"
-                        no_oa_pdf += 1
-                else:
-                    # Both APIs failed or returned errors
-                    status = "failed"
-                    resolver_status = "failed"
-                    error_detail = err_msg
-                    resolution_note = f"DOI resolver query failed: {err_msg}"
-                    failed_attempts += 1
+                        status = "failed"
+                        resolver_status = "failed"
+                        error_detail = err_msg
+                        resolution_note = f"DOI resolver query failed: {err_msg}"
+                        failed_attempts += 1
             else:
                 # No DOI: check if landing page URL exists
                 if url:
-                    status = "manual_needed"
-                    resolver_status = "not_started"
-                    article_url = url
-                    resolution_note = "No DOI available; landing page URL exists but HTML fallback is not run in this phase"
-                    manual_needed += 1
+                    network_used = True
+                    resolver_status = "html_fallback"
+                    md_filename = f"{record_id}.md"
+                    md_dest_path = os.path.join(md_dir, md_filename)
+                    time.sleep(args.delay)
+                    html_to_md_performed = True
+                    try:
+                        res = subprocess.run(
+                            [sys.executable, "scripts/html_to_md.py", url, "-o", md_dest_path, "--quiet"],
+                            capture_output=True, text=True, timeout=30
+                        )
+                        if res.returncode == 0:
+                            status = "success_html"
+                            markdown_path = f"md/{md_filename}"
+                            huashu_conversion_performed = True
+                            converted_htmls += 1
+                            resolution_note = "No DOI available; HTML landing page converted successfully"
+                        else:
+                            stderr_lower = res.stderr.lower()
+                            if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
+                                status = "manual_needed"
+                                resolution_note = "No DOI available. HTML fallback forbidden: paywalled or blocked; do not bypass"
+                                error_detail = res.stderr.strip()
+                                manual_needed += 1
+                            else:
+                                status = "failed"
+                                resolution_note = f"No DOI available; HTML fallback failed: {res.stderr.strip()}"
+                                error_detail = res.stderr.strip()
+                                failed_attempts += 1
+                    except Exception as html_err:
+                        status = "failed"
+                        resolution_note = f"No DOI available; HTML fallback exception: {str(html_err)}"
+                        error_detail = str(html_err)
+                        failed_attempts += 1
                 else:
                     status = "manual_needed"
                     resolver_status = "not_started"
@@ -538,6 +674,7 @@ def main() -> int:
             "article_url": article_url or "",
             "real_download_performed": real_download_performed,
             "huashu_conversion_performed": huashu_conversion_performed,
+            "html_to_md_performed": html_to_md_performed,
             "mock_artifact": mock_artifact
         })
 
@@ -567,6 +704,7 @@ def main() -> int:
                 "article_url": article_url,
                 "real_download_performed": real_download_performed,
                 "huashu_conversion_performed": huashu_conversion_performed,
+                "html_to_md_performed": html_to_md_performed,
                 "mock_artifact": mock_artifact
             }
         })
@@ -580,7 +718,7 @@ def main() -> int:
             "pdf_download_path", "markdown_path",
             "resolver_mode", "network_used", "resolver_source", "resolver_http_status",
             "oa_pdf_url", "article_url", "real_download_performed",
-            "huashu_conversion_performed", "mock_artifact"
+            "huashu_conversion_performed", "html_to_md_performed", "mock_artifact"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
