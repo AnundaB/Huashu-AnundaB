@@ -358,6 +358,8 @@ def main() -> int:
         mock_artifact = False
         download_http_status = None
         download_error_detail = ""
+        conversion_status = None
+        conversion_error_detail = ""
 
         # Phase 2C Real DOI Resolver Logic
         if args.resolve_doi:
@@ -399,6 +401,28 @@ def main() -> int:
                                 real_download_performed = True
                                 downloaded_pdfs += 1
                                 resolution_note = f"Resolved and downloaded PDF successfully via {source} API"
+
+                                # Convert PDF to Markdown using scripts/any_to_md.py
+                                md_filename = f"{record_id}.md"
+                                md_dest_path = os.path.join(md_dir, md_filename)
+                                try:
+                                    res_conv = subprocess.run(
+                                        [sys.executable, "scripts/any_to_md.py", pdf_dest_path, "-o", md_dest_path, "--quiet"],
+                                        capture_output=True, text=True, timeout=60
+                                    )
+                                    if res_conv.returncode == 0:
+                                        huashu_conversion_performed = True
+                                        conversion_status = "completed"
+                                        markdown_path = f"md/{md_filename}"
+                                        resolution_note += " and converted to Markdown successfully"
+                                    else:
+                                        conversion_status = "failed"
+                                        conversion_error_detail = res_conv.stderr.strip()
+                                        resolution_note += f" but PDF to MD conversion failed: {conversion_error_detail}"
+                                except Exception as conv_err:
+                                    conversion_status = "failed"
+                                    conversion_error_detail = str(conv_err)
+                                    resolution_note += f" but PDF to MD conversion exception: {conversion_error_detail}"
                             else:
                                 status = "invalid_pdf"
                                 download_error_detail = "Invalid PDF header: does not start with %PDF"
@@ -611,6 +635,8 @@ def main() -> int:
                     mock_artifact = True
                     downloaded_pdfs += 1
                     download_http_status = 200
+                    conversion_status = "completed"
+                    conversion_error_detail = ""
 
                     # Create mock files
                     pdf_full_path = os.path.join(pdfs_dir, f"{record_id}.pdf")
@@ -712,7 +738,9 @@ def main() -> int:
             "html_to_md_performed": html_to_md_performed,
             "mock_artifact": mock_artifact,
             "download_http_status": download_http_status if download_http_status is not None else "",
-            "download_error_detail": download_error_detail
+            "download_error_detail": download_error_detail,
+            "conversion_status": conversion_status if conversion_status is not None else "",
+            "conversion_error_detail": conversion_error_detail
         })
 
         jsonl_records.append({
@@ -744,7 +772,9 @@ def main() -> int:
                 "html_to_md_performed": html_to_md_performed,
                 "mock_artifact": mock_artifact,
                 "download_http_status": download_http_status,
-                "download_error_detail": download_error_detail
+                "download_error_detail": download_error_detail,
+                "conversion_status": conversion_status,
+                "conversion_error_detail": conversion_error_detail
             }
         })
 
@@ -758,7 +788,8 @@ def main() -> int:
             "resolver_mode", "network_used", "resolver_source", "resolver_http_status",
             "oa_pdf_url", "article_url", "real_download_performed",
             "huashu_conversion_performed", "html_to_md_performed", "mock_artifact",
-            "download_http_status", "download_error_detail"
+            "download_http_status", "download_error_detail",
+            "conversion_status", "conversion_error_detail"
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
