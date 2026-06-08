@@ -478,8 +478,16 @@ def main() -> int:
         run_latest()
         return 0
     else:
-        print(f"[error] Unknown argument: '{sys.argv[1]}'. Use -help to see valid flags.")
-        return 1
+        # Route to legacy any-to-markdown/clean Markdown script
+        legacy_script = "/Users/AnundaB/bin/huashu"
+        if os.path.exists(legacy_script):
+            cmd = ["bash", legacy_script] + sys.argv[1:]
+            res = subprocess.run(cmd)
+            return res.returncode
+        else:
+            print(f"[error] Unknown argument: '{sys.argv[1]}'. Legacy script not found at {legacy_script}")
+            return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

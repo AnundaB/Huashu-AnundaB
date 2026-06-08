@@ -80,21 +80,18 @@ A run is considered successful if:
 ---
 
 ## 4. Unified Huashu CLI Wrapper Contract
-The `scripts/huashu_cli.py` script acts as the main command entry point for easy invocation.
+The `scripts/huashu_cli.py` script and the launcher `/Users/AnundaB/bin/huashu` act as the dispatcher and command entry points.
 
 ### 4.1 CLI Commands:
-- `python3 scripts/huashu_cli.py -ingest <filename> [--limit <num>]` (Ingest and build vector index)
-- `python3 scripts/huashu_cli.py -search "<query>"` (Search local vector memory database)
-- `python3 scripts/huashu_cli.py -note "<question>"` (Synthesize note over retrieved chunks)
-- `python3 scripts/huashu_cli.py -latest` (Display run directories of the latest pipeline states)
+- `huashu -ingest <filename> [--limit <num>]` (Ingest and build vector index)
+- `huashu -search "<query>"` (Search local vector memory database)
+- `huashu -note "<question>"` (Synthesize note over retrieved chunks)
+- `huashu -latest` (Display run directories of the latest pipeline states)
+- `huashu -help` (Print usage details)
+- `huashu` (With no arguments: enter interactive mode)
 
-### 4.2 Shell / Alias installation:
-To run the tool as `huashu` from anywhere:
-```bash
-alias huashu="python3 $(pwd)/scripts/huashu_cli.py"
-```
-Or copy/link a wrapper script to your path:
-```bash
-ln -sf $(pwd)/scripts/huashu_cli.py /usr/local/bin/huashu
-```
+### 4.2 Legacy Conversion Routing:
+- `huashu <url-or-file>` (For example: `huashu "https://example.com"` or `huashu paper.pdf`)
+  If the input does not match any of the research flags, the dispatcher routes the request to the legacy clean markdown conversion logic, preserving the yt-dlp, whisper, and markitdown workflows.
+
 
