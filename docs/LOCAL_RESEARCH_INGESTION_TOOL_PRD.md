@@ -1,5 +1,5 @@
 # Local Research Ingestion Tool PRD
-Version 1.0
+Version 1.1
 
 ## 1. Problem Statement & Objectives
 Researchers often export search queries from platforms like Consensus as CSV or RIS files. Manually resolving these exports—finding Open Access PDFs, downloading them, extracting content, and saving them as markdown—is a repetitive and time-consuming workflow. 
@@ -18,7 +18,7 @@ The **Local Research Ingestion Tool** solves this pain by automating the downloa
 - Duplicate/unique records must be assigned a stable, unique ID (`record_id`) matching:
   `{first_author_lastname}-{year}-{first_3_words_of_title}` (all lowercased and slugified).
 
-### 2.2 Resolving Pipeline
+### 2.2 Resolving Pipeline (Phase 2 - Not Started)
 The resolving pipeline is strictly legal and must not bypass paywalls:
 1. **Open Access Check**: If a DOI exists, query Unpaywall API (`https://api.unpaywall.org/v2/{doi}`).
 2. **PDF Download**: If Unpaywall returns an Open Access PDF URL, download it to `pdfs/` and verify the `%PDF` header signature.
@@ -29,12 +29,12 @@ The resolving pipeline is strictly legal and must not bypass paywalls:
 ---
 
 ## 3. Output Run Structure
-Each run creates a timestamped folder under `outputs/consensus/YYYYMMDD-HHMMSS-consensus-ingest/` containing:
+Each run creates a unique timestamped folder (using microseconds for collision prevention) under `outputs/consensus/YYYYMMDD-HHMMSS-ffffff-consensus-ingest/` containing:
 
 ```
-├── pdfs/               # Successfully downloaded Open Access PDFs
+├── pdfs/               # Downloaded Open Access PDFs (empty in Phase 1)
 │   └── *.pdf
-├── md/                 # Converted Markdown papers (from PDF or HTML)
+├── md/                 # Converted Markdown papers (empty in Phase 1)
 │   └── *.md
 └── metadata/           # Run logs and indexes
     ├── manifest.csv    # Flattened table listing statuses
@@ -43,16 +43,25 @@ Each run creates a timestamped folder under `outputs/consensus/YYYYMMDD-HHMMSS-c
 
 ### 3.1 Status Classification
 Every record in `manifest.csv` must be labeled with one of the following statuses:
+
+#### Active resolver statuses (Phase 2):
 - `success_pdf`: PDF downloaded and converted successfully.
 - `success_html`: HTML page retrieved and converted successfully (fallback).
 - `no_oa_pdf`: DOI exists but no OA PDF is found (and no alternative URL succeeded).
 - `failed`: An attempt was made (PDF or HTML) but failed due to network or conversion errors.
 - `manual_needed`: No DOI and no URL are present, requiring human lookup.
 
+#### Parser-only baseline status (Phase 1 - Completed):
+- `parsed_only`: Record parsed and normalized correctly, but resolver/downloads were not run.
+- **Resolver fields**:
+  - `resolver_status` = `not_started`
+  - `resolution_note` = `"Phase 1 parser-only; resolver not run"`
+
 ---
 
 ## 4. CLI Parameters
-The tool should support parameters to customize runs:
+The tool supports parameters to customize runs:
+- `input_file`: Positional argument. Path to the input CSV or RIS file.
 - `--limit <int>`: Process only the first N papers (great for testing).
 - `--email <str>`: Override email parameter for Unpaywall requests.
 - `--output-dir <str>`: Change output folder location.
@@ -60,7 +69,12 @@ The tool should support parameters to customize runs:
 
 ---
 
-## 5. Success Metrics
-- **Zero Paywall Violations**: The tool never attempts to bypass subscription portals.
-- **Accurate Normalization**: CSV and RIS files yield identical normalized records.
-- **Error Resilience**: A crash on one paper does not interrupt the ingestion of subsequent papers.
+## 5. Development Phases
+
+### Phase 1: Parser-Only Ingestion Slice (Completed)
+- **Deliverables**: Added `scripts/consensus_ingest.py` parsing CSV and RIS metadata inputs, creating output run directories with microsecond uniqueness, instantiating empty `pdfs/` and `md/` directories, and outputting `manifest.csv`/`papers.jsonl` with `parsed_only` statuses.
+- **Status**: Completed.
+
+### Phase 2: DOI/URL Resolver Pipeline (Next)
+- **Deliverables**: Connect parser output to Unpaywall lookup, PDF downloader with signature verification, fallback HTML converter using `html_to_md.py`, and populate `pdfs/` and `md/` folders.
+- **Status**: Not Started.

@@ -1,6 +1,6 @@
 # Program: Local Research Ingestion
-Version: 1.0.0
-Status: Spec-Draft
+Version: 1.1.0
+Status: Phase-1-Complete
 
 This program specification outlines the technical contract, execution steps, and validation rules for the local research ingestion script.
 
@@ -19,9 +19,9 @@ python3 scripts/consensus_ingest.py <input_file> [options]
 - `--delay <float>`: Optional. Sleep delay (in seconds) between DOI queries. Defaults to `1.0`.
 
 ### 1.2 Output Layout
-Each execution creates a directory: `<output-dir>/<YYYYMMDD-HHMMSS>-consensus-ingest/` with the following structure:
-- `pdfs/`: Downloaded open-access PDFs, named `<record_id>.pdf`.
-- `md/`: Converted Markdown files, named `<record_id>.md`.
+Each execution creates a directory: `<output-dir>/<YYYYMMDD-HHMMSS-ffffff>-consensus-ingest/` (where `ffffff` is microseconds) with the following structure:
+- `pdfs/`: Downloaded open-access PDFs, named `<record_id>.pdf` (empty in Phase 1).
+- `md/`: Converted Markdown files, named `<record_id>.md` (empty in Phase 1).
 - `metadata/manifest.csv`: CSV summary of all processed records.
 - `metadata/papers.jsonl`: Rich JSONL records with full resolver logs.
 
@@ -50,11 +50,13 @@ Each execution creates a directory: `<output-dir>/<YYYYMMDD-HHMMSS>-consensus-in
 - Maintain a running set of generated IDs. If a collision occurs, append an incrementing suffix (e.g. `-1`, `-2`).
 
 ### Step 4: Setup Run Directory
-- Create the output folder with current timestamp `YYYYMMDD-HHMMSS-consensus-ingest`.
-- Recursively initialize subfolders: `pdfs/`, `md/`, and `metadata/`.
+- Create the output folder with current timestamp including microseconds: `YYYYMMDD-HHMMSS-ffffff-consensus-ingest`.
+- Recursively initialize subfolders: `pdfs/` (empty), `md/` (empty), and `metadata/`.
 
-### Step 5: Resolver Loop
-Iterate through each normalized record:
+### Step 5: Resolver Loop (Phase 2 - Not Started)
+*Note: In Phase 1, this step is bypassed. All records are initialized with a baseline status of `parsed_only`, `resolver_status` = `not_started`, and `resolution_note` = `"Phase 1 parser-only; resolver not run"`.*
+
+When Phase 2 is activated:
 1. **Unpaywall Query**:
    - If `doi` is present, query `https://api.unpaywall.org/v2/{doi}?email={email}`.
    - If a valid `url_for_pdf` is returned, proceed to download.
@@ -95,6 +97,6 @@ Iterate through each normalized record:
 
 A run is considered successful if and only if:
 1. **Manifest Parity**: The number of lines in `manifest.csv` (excluding headers) is exactly equal to the number of input papers (or `--limit`).
-2. **Filename Consistency**: For every `record_id` with status `success_pdf` or `success_html`, a corresponding markdown file `md/<record_id>.md` exists.
+2. **Filename Consistency**: For every `record_id` with status `success_pdf` or `success_html` (in Phase 2), a corresponding markdown file `md/<record_id>.md` exists.
 3. **PDF Signature**: For every file in `pdfs/`, the file must start with `%PDF` bytes.
 4. **JSONL Format**: Every line in `papers.jsonl` is a valid JSON object containing the `record_id` and `resolver_results` key.
