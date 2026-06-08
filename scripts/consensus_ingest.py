@@ -25,7 +25,7 @@ import urllib.request
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Local Consensus research ingestion pipeline.",
+        description="Local Consensus research ingestion pipeline. Handles parsing, resolving, downloading, and converting papers.",
     )
     p.add_argument(
         "input_file",
@@ -45,12 +45,27 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--mock-resolver",
         action="store_true",
-        help="Run in Phase 2B offline mock resolver harness mode.",
+        help="Run in Phase 2B offline mock resolver harness mode (simulated pipeline).",
     )
     p.add_argument(
         "--resolve-doi",
         action="store_true",
         help="Run in Phase 2C real DOI resolver mode using live API lookups.",
+    )
+    p.add_argument(
+        "--download-pdf",
+        action="store_true",
+        help="Enable downloading of open-access PDFs when resolved (requires --resolve-doi or --mock-resolver).",
+    )
+    p.add_argument(
+        "--html-fallback",
+        action="store_true",
+        help="Enable public HTML article extraction when PDF is unavailable (requires --resolve-doi or --mock-resolver).",
+    )
+    p.add_argument(
+        "--convert-md",
+        action="store_true",
+        help="Enable PDF-to-Markdown conversion for downloaded PDFs using Microsoft MarkItDown (requires --download-pdf).",
     )
     p.add_argument(
         "--email",
@@ -378,123 +393,89 @@ def main() -> int:
 
                 if success:
                     if is_oa and pdf_url:
-                        # Found OA PDF. Attempt to perform a tiny download test
                         resolver_status = "completed"
-                        pdf_filename = f"{record_id}.pdf"
-                        pdf_dest_path = os.path.join(pdfs_dir, pdf_filename)
+                        if args.download_pdf:
+                            pdf_filename = f"{record_id}.pdf"
+                            pdf_dest_path = os.path.join(pdfs_dir, pdf_filename)
 
-                        try:
-                            req = urllib.request.Request(
-                                pdf_url,
-                                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-                            )
-                            ctx = ssl.create_default_context()
-                            with urllib.request.urlopen(req, context=ctx, timeout=15) as response:
-                                download_http_status = response.getcode()
-                                pdf_data = response.read()
+                            try:
+                                req = urllib.request.Request(
+                                    pdf_url,
+                                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                                )
+                                ctx = ssl.create_default_context()
+                                with urllib.request.urlopen(req, context=ctx, timeout=15) as response:
+                                    download_http_status = response.getcode()
+                                    pdf_data = response.read()
 
-                            if len(pdf_data) >= 4 and pdf_data.startswith(b"%PDF"):
-                                with open(pdf_dest_path, "wb") as f:
-                                    f.write(pdf_data)
-                                status = "success_pdf"
-                                pdf_download_path = f"pdfs/{pdf_filename}"
-                                real_download_performed = True
-                                downloaded_pdfs += 1
-                                resolution_note = f"Resolved and downloaded PDF successfully via {source} API"
+                                if len(pdf_data) >= 4 and pdf_data.startswith(b"%PDF"):
+                                    with open(pdf_dest_path, "wb") as f:
+                                        f.write(pdf_data)
+                                    status = "success_pdf"
+                                    pdf_download_path = f"pdfs/{pdf_filename}"
+                                    real_download_performed = True
+                                    downloaded_pdfs += 1
+                                    resolution_note = f"Resolved and downloaded PDF successfully via {source} API"
 
-                                # Convert PDF to Markdown using scripts/any_to_md.py
-                                md_filename = f"{record_id}.md"
-                                md_dest_path = os.path.join(md_dir, md_filename)
-                                try:
-                                    res_conv = subprocess.run(
-                                        [sys.executable, "scripts/any_to_md.py", pdf_dest_path, "-o", md_dest_path, "--quiet"],
-                                        capture_output=True, text=True, timeout=60
-                                    )
-                                    if res_conv.returncode == 0:
-                                        huashu_conversion_performed = True
-                                        conversion_status = "completed"
-                                        markdown_path = f"md/{md_filename}"
-                                        resolution_note += " and converted to Markdown successfully"
-                                    else:
-                                        conversion_status = "failed"
-                                        conversion_error_detail = res_conv.stderr.strip()
-                                        resolution_note += f" but PDF to MD conversion failed: {conversion_error_detail}"
-                                except Exception as conv_err:
-                                    conversion_status = "failed"
-                                    conversion_error_detail = str(conv_err)
-                                    resolution_note += f" but PDF to MD conversion exception: {conversion_error_detail}"
-                            else:
-                                status = "invalid_pdf"
-                                download_error_detail = "Invalid PDF header: does not start with %PDF"
-                                resolution_note = "Downloaded file is not a valid PDF"
-                                if os.path.exists(pdf_dest_path):
-                                    try:
-                                        os.remove(pdf_dest_path)
-                                    except Exception:
-                                        pass
-                        except urllib.error.HTTPError as dl_err:
-                            download_http_status = dl_err.code
-                            download_error_detail = f"HTTP Error {dl_err.code}: {dl_err.reason}"
-                            if dl_err.code in (401, 403):
-                                status = "download_forbidden"
-                            else:
-                                status = "download_failed"
-                            resolution_note = f"OA PDF download failed: {download_error_detail}"
-                        except Exception as dl_err:
-                            download_error_detail = str(dl_err)
-                            status = "download_failed"
-                            resolution_note = f"OA PDF download failed: {str(dl_err)}"
-
-                        if status in ("download_forbidden", "download_failed", "invalid_pdf"):
-                            # PDF download failed. Attempt HTML fallback!
-                            url_to_use = landing_url or url
-                            if url_to_use:
-                                resolver_status = "html_fallback"
-                                md_filename = f"{record_id}.md"
-                                md_dest_path = os.path.join(md_dir, md_filename)
-                                time.sleep(args.delay)
-                                html_to_md_performed = True
-                                try:
-                                    res = subprocess.run(
-                                        [sys.executable, "scripts/html_to_md.py", url_to_use, "-o", md_dest_path, "--quiet"],
-                                        capture_output=True, text=True, timeout=30
-                                    )
-                                    if res.returncode == 0:
-                                        status = "success_html"
-                                        markdown_path = f"md/{md_filename}"
-                                        huashu_conversion_performed = True
-                                        converted_htmls += 1
-                                        resolution_note = f"OA PDF download failed ({download_error_detail or 'invalid header'}), but HTML landing page converted successfully"
-                                    else:
-                                        stderr_lower = res.stderr.lower()
-                                        if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
-                                            status = "manual_needed"
-                                            resolution_note = f"OA PDF download failed ({download_error_detail}) and HTML forbidden: paywalled or blocked; do not bypass"
-                                            error_detail = f"PDF error: {download_error_detail}. HTML error: {res.stderr.strip()}"
-                                            manual_needed += 1
-                                        else:
-                                            status = "failed"
-                                            resolution_note = f"OA PDF download failed ({download_error_detail}) and HTML fallback failed: {res.stderr.strip()}"
-                                            error_detail = f"PDF error: {download_error_detail}. HTML error: {res.stderr.strip()}"
-                                            failed_attempts += 1
-                                except Exception as html_err:
-                                    status = "failed"
-                                    resolution_note = f"OA PDF download failed ({download_error_detail}) and HTML fallback exception: {str(html_err)}"
-                                    error_detail = f"PDF error: {download_error_detail}. HTML error: {str(html_err)}"
-                                    failed_attempts += 1
-                            else:
-                                if status == "download_forbidden":
-                                    status = "manual_needed"
-                                    resolution_note = f"OA PDF download forbidden ({download_error_detail}) and no fallback URL exists"
-                                    error_detail = f"PDF download forbidden: {download_error_detail}"
-                                    manual_needed += 1
+                                    if args.convert_md:
+                                        # Convert PDF to Markdown using scripts/any_to_md.py
+                                        md_filename = f"{record_id}.md"
+                                        md_dest_path = os.path.join(md_dir, md_filename)
+                                        try:
+                                            res_conv = subprocess.run(
+                                                [sys.executable, "scripts/any_to_md.py", pdf_dest_path, "-o", md_dest_path, "--quiet"],
+                                                capture_output=True, text=True, timeout=60
+                                            )
+                                            if res_conv.returncode == 0:
+                                                huashu_conversion_performed = True
+                                                conversion_status = "completed"
+                                                markdown_path = f"md/{md_filename}"
+                                                resolution_note += " and converted to Markdown successfully"
+                                            else:
+                                                conversion_status = "failed"
+                                                conversion_error_detail = res_conv.stderr.strip()
+                                                resolution_note += f" but PDF to MD conversion failed: {conversion_error_detail}"
+                                        except Exception as conv_err:
+                                            conversion_status = "failed"
+                                            conversion_error_detail = str(conv_err)
+                                            resolution_note += f" but PDF to MD conversion exception: {conversion_error_detail}"
                                 else:
-                                    # invalid_pdf or download_failed
-                                    error_detail = f"Failed to download PDF from {pdf_url}: {download_error_detail}"
-                                    resolution_note = f"OA PDF download failed ({download_error_detail}) and no fallback URL exists"
-                                    failed_attempts += 1
+                                    status = "invalid_pdf"
+                                    download_error_detail = "Invalid PDF header: does not start with %PDF"
+                                    resolution_note = "Downloaded file is not a valid PDF"
+                                    if os.path.exists(pdf_dest_path):
+                                        try:
+                                            os.remove(pdf_dest_path)
+                                        except Exception:
+                                            pass
+                            except urllib.error.HTTPError as dl_err:
+                                download_http_status = dl_err.code
+                                download_error_detail = f"HTTP Error {dl_err.code}: {dl_err.reason}"
+                                if dl_err.code in (401, 403):
+                                    status = "download_forbidden"
+                                else:
+                                    status = "download_failed"
+                                resolution_note = f"OA PDF download failed: {download_error_detail}"
+                            except Exception as dl_err:
+                                download_error_detail = str(dl_err)
+                                status = "download_failed"
+                                resolution_note = f"OA PDF download failed: {str(dl_err)}"
+                        else:
+                            status = "resolved_pdf"
+                            resolution_note = "OA PDF resolved successfully; download not requested"
                     else:
-                        # API query succeeded, but no direct PDF. Attempt HTML fallback!
+                        status = "no_oa_pdf"
+                        resolution_note = f"DOI resolved via {source} but no OA PDF found"
+                        no_oa_pdf += 1
+                else:
+                    status = "failed"
+                    resolver_status = "failed"
+                    error_detail = err_msg
+                    resolution_note = f"DOI resolver query failed: {err_msg}"
+                    failed_attempts += 1
+
+                if status in ("download_forbidden", "download_failed", "invalid_pdf", "no_oa_pdf", "resolved_pdf", "failed"):
+                    if args.html_fallback:
                         url_to_use = landing_url or url
                         if url_to_use:
                             resolver_status = "html_fallback"
@@ -512,32 +493,52 @@ def main() -> int:
                                     markdown_path = f"md/{md_filename}"
                                     huashu_conversion_performed = True
                                     converted_htmls += 1
-                                    resolution_note = f"No direct OA PDF, but HTML landing page converted successfully via {source}"
+                                    resolution_note = f"DOI lookup / PDF download failed or skipped, but HTML landing page converted successfully"
                                 else:
                                     stderr_lower = res.stderr.lower()
                                     if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
                                         status = "manual_needed"
-                                        resolution_note = f"No direct OA PDF. HTML fallback forbidden: paywalled or blocked; do not bypass"
-                                        error_detail = res.stderr.strip()
+                                        resolution_note = f"HTML fallback forbidden: paywalled or blocked; do not bypass"
+                                        error_detail = f"HTML error: {res.stderr.strip()}"
                                         manual_needed += 1
                                     else:
-                                        status = "no_oa_pdf"
-                                        resolution_note = f"No direct OA PDF. HTML fallback failed: {res.stderr.strip()}"
-                                        error_detail = res.stderr.strip()
-                                        no_oa_pdf += 1
+                                        status = "failed"
+                                        resolution_note = f"HTML fallback failed: {res.stderr.strip()}"
+                                        error_detail = f"HTML error: {res.stderr.strip()}"
+                                        failed_attempts += 1
                             except Exception as html_err:
-                                status = "no_oa_pdf"
-                                resolution_note = f"No direct OA PDF. HTML fallback exception: {str(html_err)}"
-                                error_detail = str(html_err)
-                                no_oa_pdf += 1
+                                status = "failed"
+                                resolution_note = f"HTML fallback exception: {str(html_err)}"
+                                error_detail = f"HTML error: {str(html_err)}"
+                                failed_attempts += 1
                         else:
-                            status = "no_oa_pdf"
-                            resolver_status = "unpaywall_lookup" if source == "unpaywall" else "openalex_lookup"
-                            resolution_note = f"DOI resolved via {source} but no OA PDF or fallback URL found"
-                            no_oa_pdf += 1
-                else:
-                    # API queries failed. Attempt HTML fallback if CSV URL exists!
-                    if url:
+                            if status == "download_forbidden":
+                                status = "manual_needed"
+                                resolution_note = f"OA PDF download forbidden ({download_error_detail}) and no fallback URL exists"
+                                error_detail = f"PDF download forbidden: {download_error_detail}"
+                                manual_needed += 1
+                            elif status == "resolved_pdf":
+                                pass
+                            elif status == "no_oa_pdf":
+                                pass
+                            else:
+                                error_detail = f"Failed to download PDF from {pdf_url}: {download_error_detail}"
+                                resolution_note = f"OA PDF download failed ({download_error_detail}) and no fallback URL exists"
+                                failed_attempts += 1
+                    else:
+                        if status == "download_forbidden":
+                            status = "manual_needed"
+                            manual_needed += 1
+                        elif status == "resolved_pdf":
+                            pass
+                        elif status == "no_oa_pdf":
+                            pass
+                        elif status in ("download_failed", "invalid_pdf", "failed"):
+                            failed_attempts += 1
+            else:
+                if url:
+                    if args.html_fallback:
+                        network_used = True
                         resolver_status = "html_fallback"
                         md_filename = f"{record_id}.md"
                         md_dest_path = os.path.join(md_dir, md_filename)
@@ -553,67 +554,29 @@ def main() -> int:
                                 markdown_path = f"md/{md_filename}"
                                 huashu_conversion_performed = True
                                 converted_htmls += 1
-                                resolution_note = f"DOI query failed ({err_msg}), but HTML landing page converted successfully"
+                                resolution_note = "No DOI available; HTML landing page converted successfully"
                             else:
                                 stderr_lower = res.stderr.lower()
                                 if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
                                     status = "manual_needed"
-                                    resolution_note = f"DOI query failed ({err_msg}). HTML fallback forbidden: paywalled or blocked; do not bypass"
-                                    error_detail = f"DOI error: {err_msg}. HTML error: {res.stderr.strip()}"
+                                    resolution_note = "No DOI available. HTML fallback forbidden: paywalled or blocked; do not bypass"
+                                    error_detail = res.stderr.strip()
                                     manual_needed += 1
                                 else:
                                     status = "failed"
-                                    resolution_note = f"DOI query failed ({err_msg}) and HTML fallback failed: {res.stderr.strip()}"
-                                    error_detail = f"DOI error: {err_msg}. HTML error: {res.stderr.strip()}"
+                                    resolution_note = f"No DOI available; HTML fallback failed: {res.stderr.strip()}"
+                                    error_detail = res.stderr.strip()
                                     failed_attempts += 1
                         except Exception as html_err:
                             status = "failed"
-                            resolution_note = f"DOI query failed ({err_msg}) and HTML fallback exception: {str(html_err)}"
-                            error_detail = f"DOI error: {err_msg}. HTML error: {str(html_err)}"
+                            resolution_note = f"No DOI available; HTML fallback exception: {str(html_err)}"
+                            error_detail = str(html_err)
                             failed_attempts += 1
                     else:
-                        status = "failed"
-                        resolver_status = "failed"
-                        error_detail = err_msg
-                        resolution_note = f"DOI resolver query failed: {err_msg}"
-                        failed_attempts += 1
-            else:
-                # No DOI: check if landing page URL exists
-                if url:
-                    network_used = True
-                    resolver_status = "html_fallback"
-                    md_filename = f"{record_id}.md"
-                    md_dest_path = os.path.join(md_dir, md_filename)
-                    time.sleep(args.delay)
-                    html_to_md_performed = True
-                    try:
-                        res = subprocess.run(
-                            [sys.executable, "scripts/html_to_md.py", url, "-o", md_dest_path, "--quiet"],
-                            capture_output=True, text=True, timeout=30
-                        )
-                        if res.returncode == 0:
-                            status = "success_html"
-                            markdown_path = f"md/{md_filename}"
-                            huashu_conversion_performed = True
-                            converted_htmls += 1
-                            resolution_note = "No DOI available; HTML landing page converted successfully"
-                        else:
-                            stderr_lower = res.stderr.lower()
-                            if any(x in stderr_lower for x in ("403", "forbidden", "401", "unauthorized")):
-                                status = "manual_needed"
-                                resolution_note = "No DOI available. HTML fallback forbidden: paywalled or blocked; do not bypass"
-                                error_detail = res.stderr.strip()
-                                manual_needed += 1
-                            else:
-                                status = "failed"
-                                resolution_note = f"No DOI available; HTML fallback failed: {res.stderr.strip()}"
-                                error_detail = res.stderr.strip()
-                                failed_attempts += 1
-                    except Exception as html_err:
-                        status = "failed"
-                        resolution_note = f"No DOI available; HTML fallback exception: {str(html_err)}"
-                        error_detail = str(html_err)
-                        failed_attempts += 1
+                        status = "manual_needed"
+                        resolver_status = "not_started"
+                        resolution_note = "No DOI available; HTML fallback disabled"
+                        manual_needed += 1
                 else:
                     status = "manual_needed"
                     resolver_status = "not_started"
@@ -626,43 +589,55 @@ def main() -> int:
             if doi:
                 if "10.1371" in doi or "10.1186" in doi:
                     # Success PDF path
-                    status = "success_pdf"
                     resolver_status = "completed"
-                    resolution_note = "Mock only: simulated OA PDF success using placeholder artifact; no network/download/conversion run"
                     oa_pdf_url = "http://localhost/mock/paper.pdf"
-                    pdf_download_path = f"pdfs/{record_id}.pdf"
-                    markdown_path = f"md/{record_id}.md"
-                    mock_artifact = True
-                    downloaded_pdfs += 1
-                    download_http_status = 200
-                    conversion_status = "completed"
-                    conversion_error_detail = ""
+                    
+                    if args.download_pdf:
+                        status = "success_pdf"
+                        pdf_download_path = f"pdfs/{record_id}.pdf"
+                        download_http_status = 200
+                        downloaded_pdfs += 1
+                        mock_artifact = True
 
-                    # Create mock files
-                    pdf_full_path = os.path.join(pdfs_dir, f"{record_id}.pdf")
-                    md_full_path = os.path.join(md_dir, f"{record_id}.md")
-                    with open(pdf_full_path, "wb") as f:
-                        f.write(b"%PDF-1.4\n% MOCK PLACEHOLDER\n")
-                    with open(md_full_path, "w", encoding="utf-8") as f:
-                        f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated PDF.\n")
+                        # Create mock files
+                        pdf_full_path = os.path.join(pdfs_dir, f"{record_id}.pdf")
+                        with open(pdf_full_path, "wb") as f:
+                            f.write(b"%PDF-1.4\n% MOCK PLACEHOLDER\n")
+
+                        if args.convert_md:
+                            markdown_path = f"md/{record_id}.md"
+                            conversion_status = "completed"
+                            conversion_error_detail = ""
+                            md_full_path = os.path.join(md_dir, f"{record_id}.md")
+                            with open(md_full_path, "w", encoding="utf-8") as f:
+                                f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated PDF.\n")
+                    else:
+                        status = "resolved_pdf"
+                        resolution_note = "Mock only: simulated OA PDF success; download not requested"
                 elif "10.1145" in doi or "10.2139" in doi:
                     # Non-OA DOI but has URL fallback
                     if url:
-                        status = "success_html"
-                        resolver_status = "html_fallback"
-                        resolution_note = "Mock only: simulated HTML fallback using placeholder Markdown; no network/fetch/conversion run"
-                        oa_pdf_url = None
-                        pdf_download_path = None
-                        markdown_path = f"md/{record_id}.md"
-                        html_fallback_attempted = True
-                        mock_artifact = True
-                        converted_htmls += 1
-                        download_http_status = None
+                        if args.html_fallback:
+                            status = "success_html"
+                            resolver_status = "html_fallback"
+                            resolution_note = "Mock only: simulated HTML fallback using placeholder Markdown; no network/fetch/conversion run"
+                            oa_pdf_url = None
+                            pdf_download_path = None
+                            markdown_path = f"md/{record_id}.md"
+                            html_fallback_attempted = True
+                            mock_artifact = True
+                            converted_htmls += 1
+                            download_http_status = None
 
-                        # Create mock file
-                        md_full_path = os.path.join(md_dir, f"{record_id}.md")
-                        with open(md_full_path, "w", encoding="utf-8") as f:
-                            f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                            # Create mock file
+                            md_full_path = os.path.join(md_dir, f"{record_id}.md")
+                            with open(md_full_path, "w", encoding="utf-8") as f:
+                                f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                        else:
+                            status = "manual_needed"
+                            resolver_status = "not_started"
+                            resolution_note = "Mock only: DOI has no OA PDF, and HTML fallback not requested"
+                            manual_needed += 1
                     else:
                         status = "failed"
                         resolver_status = "failed"
@@ -690,17 +665,23 @@ def main() -> int:
             else:
                 # No DOI
                 if url:
-                    status = "success_html"
-                    resolver_status = "html_fallback"
-                    resolution_note = "Mock only: simulated HTML fallback using placeholder Markdown; no network/fetch/conversion run"
-                    markdown_path = f"md/{record_id}.md"
-                    html_fallback_attempted = True
-                    mock_artifact = True
-                    converted_htmls += 1
+                    if args.html_fallback:
+                        status = "success_html"
+                        resolver_status = "html_fallback"
+                        resolution_note = "Mock only: simulated HTML fallback using placeholder Markdown; no network/fetch/conversion run"
+                        markdown_path = f"md/{record_id}.md"
+                        html_fallback_attempted = True
+                        mock_artifact = True
+                        converted_htmls += 1
 
-                    md_full_path = os.path.join(md_dir, f"{record_id}.md")
-                    with open(md_full_path, "w", encoding="utf-8") as f:
-                        f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                        md_full_path = os.path.join(md_dir, f"{record_id}.md")
+                        with open(md_full_path, "w", encoding="utf-8") as f:
+                            f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                    else:
+                        status = "manual_needed"
+                        resolver_status = "not_started"
+                        resolution_note = "Mock only: No DOI available; HTML fallback disabled"
+                        manual_needed += 1
                 else:
                     status = "manual_needed"
                     resolver_status = "not_started"
