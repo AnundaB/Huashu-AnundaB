@@ -20,7 +20,7 @@ import sys
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Local Consensus research ingestion Phase 1 (Parser-Only).",
+        description="Local Consensus research ingestion Phase 1 & 2B (Offline).",
     )
     p.add_argument(
         "input_file",
@@ -37,7 +37,11 @@ def parse_args() -> argparse.Namespace:
         default="outputs/consensus",
         help="Base directory for writing outputs. Default: outputs/consensus",
     )
-    # The following options are parsed to maintain interface parity with PRD, but are unused in Phase 1
+    p.add_argument(
+        "--mock-resolver",
+        action="store_true",
+        help="Run in Phase 2B offline mock resolver harness mode.",
+    )
     p.add_argument(
         "--email",
         default="consensus-ingest@example.com",
@@ -228,6 +232,13 @@ def main() -> int:
     records_with_doi = 0
     records_with_url = 0
 
+    # Resolver stats (Phase 2)
+    downloaded_pdfs = 0
+    converted_htmls = 0
+    no_oa_pdf = 0
+    failed_attempts = 0
+    manual_needed = 0
+
     for record in raw_records:
         record_id = generate_record_id(record, existing_ids)
         title = record.get("title") or ""
@@ -239,9 +250,109 @@ def main() -> int:
         if url:
             records_with_url += 1
 
-        # Phase 1: In parser-only phase, status is strictly parsed_only
+        # Defaults matching Phase 1 baseline
         status = "parsed_only"
-        error_detail = "Phase 1 parser-only; resolver not run"
+        resolver_status = "not_started"
+        resolution_note = "Phase 1 parser-only; resolver not run"
+        oa_pdf_url = None
+        pdf_download_path = None
+        html_fallback_attempted = False
+        markdown_path = None
+        error_detail = ""
+        resolver_mode = "offline_parser"
+        network_used = False
+        real_download_performed = False
+        huashu_conversion_performed = False
+        mock_artifact = False
+
+        # Phase 2B Mock Resolver Logic
+        if args.mock_resolver:
+            resolver_mode = "mock"
+            if doi:
+                if "10.1371" in doi or "10.1186" in doi:
+                    # Success PDF path
+                    status = "success_pdf"
+                    resolver_status = "completed"
+                    resolution_note = "Mock only: simulated OA PDF success using placeholder artifact; no network/download/conversion run"
+                    oa_pdf_url = "http://localhost/mock/paper.pdf"
+                    pdf_download_path = f"pdfs/{record_id}.pdf"
+                    markdown_path = f"md/{record_id}.md"
+                    mock_artifact = True
+                    downloaded_pdfs += 1
+
+                    # Create mock files
+                    pdf_full_path = os.path.join(pdfs_dir, f"{record_id}.pdf")
+                    md_full_path = os.path.join(md_dir, f"{record_id}.md")
+                    with open(pdf_full_path, "wb") as f:
+                        f.write(b"%PDF-1.4\n% MOCK PLACEHOLDER\n")
+                    with open(md_full_path, "w", encoding="utf-8") as f:
+                        f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated PDF.\n")
+                elif "10.1145" in doi or "10.2139" in doi:
+                    # Non-OA DOI but has URL fallback
+                    if url:
+                        status = "success_html"
+                        resolver_status = "html_fallback"
+                        resolution_note = "Mock only: simulated HTML fallback using placeholder Markdown; no network/fetch/conversion run"
+                        oa_pdf_url = None
+                        pdf_download_path = None
+                        markdown_path = f"md/{record_id}.md"
+                        html_fallback_attempted = True
+                        mock_artifact = True
+                        converted_htmls += 1
+
+                        # Create mock file
+                        md_full_path = os.path.join(md_dir, f"{record_id}.md")
+                        with open(md_full_path, "w", encoding="utf-8") as f:
+                            f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                    else:
+                        status = "failed"
+                        resolver_status = "failed"
+                        resolution_note = "Mock only: simulated download failure/timeout; no network run"
+                        failed_attempts += 1
+                elif "10.3390" in doi:
+                    # PDF lookup OA found, download/conversion fails
+                    status = "failed"
+                    resolver_status = "failed"
+                    resolution_note = "Mock only: simulated download failure/timeout; no network run"
+                    failed_attempts += 1
+                elif "10.1002" in doi:
+                    # DOI exists, no OA PDF, no URL fallback
+                    status = "no_oa_pdf"
+                    resolver_status = "unpaywall_lookup"
+                    resolution_note = "Mock only: simulated Unpaywall lookup finding no OA PDF; no network run"
+                    no_oa_pdf += 1
+                else:
+                    status = "no_oa_pdf"
+                    resolver_status = "unpaywall_lookup"
+                    resolution_note = "Mock only: simulated Unpaywall lookup finding no OA PDF; no network run"
+                    no_oa_pdf += 1
+            else:
+                # No DOI
+                if url:
+                    status = "success_html"
+                    resolver_status = "html_fallback"
+                    resolution_note = "Mock only: simulated HTML fallback using placeholder Markdown; no network/fetch/conversion run"
+                    markdown_path = f"md/{record_id}.md"
+                    html_fallback_attempted = True
+                    mock_artifact = True
+                    converted_htmls += 1
+
+                    md_full_path = os.path.join(md_dir, f"{record_id}.md")
+                    with open(md_full_path, "w", encoding="utf-8") as f:
+                        f.write(f"# MOCK PLACEHOLDER\n\n# {title}\nMock parsed markdown from simulated HTML.\n")
+                else:
+                    status = "manual_needed"
+                    resolver_status = "not_started"
+                    resolution_note = "No DOI and no URL available"
+                    manual_needed += 1
+        else:
+            # Phase 1 baseline error detail mapping
+            if not doi and not url:
+                status = "manual_needed"
+                error_detail = "No DOI and no URL available"
+                manual_needed += 1
+            else:
+                error_detail = "Phase 1 parser-only; resolver not run"
 
         manifest_rows.append({
             "record_id": record_id,
@@ -251,7 +362,15 @@ def main() -> int:
             "doi": doi,
             "url": url,
             "status": status,
-            "error_detail": error_detail
+            "resolver_status": resolver_status,
+            "resolution_note": resolution_note,
+            "pdf_download_path": pdf_download_path or "",
+            "markdown_path": markdown_path or "",
+            "resolver_mode": resolver_mode,
+            "network_used": network_used,
+            "real_download_performed": real_download_performed,
+            "huashu_conversion_performed": huashu_conversion_performed,
+            "mock_artifact": mock_artifact
         })
 
         jsonl_records.append({
@@ -265,21 +384,32 @@ def main() -> int:
             "source_file": record.get("source_file") or "",
             "resolver_results": {
                 "status": status,
-                "resolver_status": "not_started",
-                "resolution_note": "Phase 1 parser-only; resolver not run",
-                "unpaywall_queried": False,
-                "oa_pdf_url": None,
-                "pdf_download_path": None,
-                "html_fallback_attempted": False,
-                "markdown_path": None,
-                "error_detail": error_detail
+                "resolver_status": resolver_status,
+                "resolution_note": resolution_note,
+                "unpaywall_queried": True if (args.mock_resolver and doi) else False,
+                "oa_pdf_url": oa_pdf_url,
+                "pdf_download_path": pdf_download_path,
+                "html_fallback_attempted": html_fallback_attempted,
+                "markdown_path": markdown_path,
+                "error_detail": error_detail or resolution_note,
+                "resolver_mode": resolver_mode,
+                "network_used": network_used,
+                "real_download_performed": real_download_performed,
+                "huashu_conversion_performed": huashu_conversion_performed,
+                "mock_artifact": mock_artifact
             }
         })
 
     # Write metadata/manifest.csv
     manifest_path = os.path.join(metadata_dir, "manifest.csv")
     with open(manifest_path, mode="w", encoding="utf-8", newline="") as csvfile:
-        fieldnames = ["record_id", "title", "authors", "year", "doi", "url", "status", "error_detail"]
+        fieldnames = [
+            "record_id", "title", "authors", "year", "doi", "url",
+            "status", "resolver_status", "resolution_note",
+            "pdf_download_path", "markdown_path",
+            "resolver_mode", "network_used", "real_download_performed",
+            "huashu_conversion_performed", "mock_artifact"
+        ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for row in manifest_rows:
@@ -296,6 +426,12 @@ def main() -> int:
     print(f"Records with DOI:   {records_with_doi}")
     print(f"Records with URL:   {records_with_url}")
     print(f"Output folder path: {run_dir}")
+    if args.mock_resolver:
+        print(f"Downloaded PDFs:    {downloaded_pdfs}")
+        print(f"Converted HTMLs:    {converted_htmls}")
+        print(f"No OA PDF (No PDF):  {no_oa_pdf}")
+        print(f"Failed Attempt:      {failed_attempts}")
+        print(f"Manual Retrieval:    {manual_needed}")
 
     return 0
 
