@@ -25,23 +25,23 @@ def find_input_file(filename: str) -> str | None:
     # 1. Exact path
     if os.path.exists(filename):
         return os.path.abspath(filename)
-    
+
     # 2. CWD relative path
     cwd_path = os.path.join(os.getcwd(), filename)
     if os.path.exists(cwd_path):
         return os.path.abspath(cwd_path)
-    
+
     # 3. inputs/consensus/ in the repo
     repo_inputs = os.path.join(REPO_ROOT, "inputs", "consensus", filename)
     if os.path.exists(repo_inputs):
         return os.path.abspath(repo_inputs)
-    
+
     # 4. ~/Downloads/
     downloads = os.path.expanduser("~/Downloads")
     downloads_path = os.path.join(downloads, filename)
     if os.path.exists(downloads_path):
         return os.path.abspath(downloads_path)
-    
+
     return None
 
 
@@ -65,7 +65,7 @@ def get_latest_run_dir() -> str | None:
             # Sort by directory name (format is YYYYMMDD-HHMMSS-...)
             subdirs.sort(key=lambda x: os.path.basename(x))
             return subdirs[-1]
-    
+
     return None
 
 
@@ -104,7 +104,7 @@ def print_ingest_summary(run_dir: str):
     if not os.path.exists(manifest_path):
         print(f"[warn] manifest.csv not found under {run_dir}")
         return
-    
+
     total = 0
     resolved_doi = 0
     oa_pdf_found = 0
@@ -114,7 +114,7 @@ def print_ingest_summary(run_dir: str):
     quality_passed = 0
     manual_needed = 0
     failed_forbidden = 0
-    
+
     with open(manifest_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -135,7 +135,7 @@ def print_ingest_summary(run_dir: str):
                 manual_needed += 1
             if row.get("status") == "failed":
                 failed_forbidden += 1
-                
+
     total_chunks = 0
     manifest_json_path = os.path.join(run_dir, "memory", "index_manifest.json")
     if os.path.exists(manifest_json_path):
@@ -145,7 +145,7 @@ def print_ingest_summary(run_dir: str):
                 total_chunks = manifest_data.get("total_chunks", 0)
         except Exception:
             pass
-            
+
     print("\n" + "="*50)
     print("INGESTION SUMMARY")
     print("="*50)
@@ -178,15 +178,15 @@ def run_ingest(filename: str, limit: str | None = None) -> bool:
         print(f"[error] Could not locate input file: '{filename}'")
         print("Tried: exact path, CWD, inputs/consensus/ in repo, and ~/Downloads/.")
         return False
-    
+
     print(f"Resolved input file to: {resolved_file}")
-    
+
     python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
     if not os.path.exists(python_exe):
         python_exe = "python3"
-        
+
     ingest_script = os.path.join(REPO_ROOT, "scripts", "consensus_ingest.py")
-    
+
     # Build consensus_ingest command args
     cmd = [
         python_exe,
@@ -201,9 +201,9 @@ def run_ingest(filename: str, limit: str | None = None) -> bool:
     if limit:
         cmd.extend(["--limit", limit])
     cmd.append(resolved_file)
-    
+
     print(f"Running Ingestion: {' '.join(cmd)}")
-    
+
     try:
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         # Scan stdout to find the output folder
@@ -212,30 +212,30 @@ def run_ingest(filename: str, limit: str | None = None) -> bool:
             print(line)
             if "Output folder path:" in line:
                 run_dir = line.split("Output folder path:", 1)[1].strip()
-        
+
         # If output folder path wasn't captured, check stderr or try finding the latest run dir
         if not run_dir:
             # Fallback
             run_dir = get_latest_run_dir()
-            
+
         if not run_dir or not os.path.exists(run_dir):
             print("[error] Ingestion completed but output run directory could not be resolved.")
             return False
-        
+
         # Save pointer
         write_latest_run_dir(run_dir)
-        
+
         # Build memory index automatically
         print("\n[info] Ingestion complete. Building memory index automatically...")
         index_script = os.path.join(REPO_ROOT, "scripts", "research_memory_index.py")
         build_cmd = [python_exe, index_script, "build", run_dir]
         print(f"Running Memory Indexer: {' '.join(build_cmd)}")
         subprocess.run(build_cmd, check=True)
-        
+
         # Print summary
         print_ingest_summary(run_dir)
         return True
-        
+
     except subprocess.CalledProcessError as e:
         print(f"\n[error] Ingestion command failed with exit status {e.returncode}.")
         print("Stderr:\n", e.stderr)
@@ -250,14 +250,14 @@ def run_search(query: str) -> bool:
     if not run_dir:
         print("No memory index found. Run huashu -ingest <file> first.")
         return False
-        
+
     python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
     if not os.path.exists(python_exe):
         python_exe = "python3"
-        
+
     index_script = os.path.join(REPO_ROOT, "scripts", "research_memory_index.py")
     cmd = [python_exe, index_script, "query", run_dir, query]
-    
+
     try:
         subprocess.run(cmd, check=True)
         return True
@@ -274,26 +274,26 @@ def run_note(question: str) -> bool:
     if not run_dir:
         print("No memory index found. Run huashu -ingest <file> first.")
         return False
-        
+
     python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
     if not os.path.exists(python_exe):
         python_exe = "python3"
-        
+
     loop_script = os.path.join(REPO_ROOT, "scripts", "research_loop.py")
     cmd = [python_exe, loop_script, run_dir, question]
-    
+
     print(f"Running Research Council Loop: {' '.join(cmd)}")
-    
+
     try:
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         print(result.stdout)
-        
+
         # Parse run output dir from output
         note_dir = None
         for line in result.stdout.splitlines():
             if "Research Run Folder:" in line:
                 note_dir = line.split("Research Run Folder:", 1)[1].strip()
-                
+
         if not note_dir:
             # Fallback
             runs_dir = os.path.join(REPO_ROOT, "outputs", "research-runs")
@@ -302,7 +302,7 @@ def run_note(question: str) -> bool:
                 if subdirs:
                     subdirs.sort(key=lambda x: os.path.basename(x))
                     note_dir = subdirs[-1]
-                    
+
         if note_dir:
             print("\n" + "="*50)
             print("RESEARCH NOTES GENERATED")
@@ -327,14 +327,14 @@ def run_latest():
     if not run_dir:
         print("No ingestion runs found yet. Use -ingest to import research papers.")
         return
-        
+
     print("\n" + "="*50)
     print("LATEST PIPELINE STATE")
     print("="*50)
     print(f"Latest Ingestion Run:      {run_dir}")
     print(f"Markdown Files Folder:     {os.path.join(run_dir, 'md')}")
     print(f"Memory Index Folder:       {os.path.join(run_dir, 'memory')}")
-    
+
     latest_run_dir, note_path = get_latest_research_run()
     if latest_run_dir:
         print(f"Latest Research Run:       {latest_run_dir}")
@@ -356,6 +356,9 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -search "<query>"                   Query similarity search over local paper vectors.
   python3 scripts/huashu_cli.py -note "<question>"                  Run the Research Council to write a markdown note.
   python3 scripts/huashu_cli.py -latest                             Show directories and details of the latest runs.
+  python3 scripts/huashu_cli.py -docs <url>                         Force docs crawl of a site.
+  python3 scripts/huashu_cli.py -page <url>                         Force single-page web conversion.
+  python3 scripts/huashu_cli.py <url>                               Smart docs-site crawl or single-page conversion.
   python3 scripts/huashu_cli.py -help                               Show this help message.
 
 Usage (Interactive Mode):
@@ -390,14 +393,14 @@ def interactive_loop():
     print(" Huashu Local Ingestion & Auto-Research Council CLI Tool")
     print(" Type 'help' for commands, 'exit' or 'quit' to exit.")
     print("="*60 + "\n")
-    
+
     while True:
         try:
             cmd_line = input("huashu> ")
             cmd, arg = parse_interactive_command(cmd_line)
             if not cmd:
                 continue
-                
+
             if cmd in ("exit", "quit", "q"):
                 print("Exiting. Goodbye!")
                 break
@@ -438,14 +441,140 @@ def interactive_loop():
             print(f"[error] An unexpected error occurred: {e}")
 
 
+def run_single_page_conversion(url: str, output_dir: str | None = None) -> bool:
+    """Runs legacy single-page conversion to Markdown using html_to_md.py / any_to_md.py."""
+    import datetime
+    import subprocess
+    import sys
+    import urllib.parse
+
+    if not output_dir:
+        output_dir = os.path.join(REPO_ROOT, "outputs", "auto")
+    os.makedirs(output_dir, exist_ok=True)
+
+    u = urllib.parse.urlparse(url)
+    if "youtube.com" in u.netloc:
+        q = urllib.parse.parse_qs(u.query)
+        slug_text = "youtube-" + q.get("v", ["video"])[0]
+    elif "youtu.be" in u.netloc:
+        slug_text = "youtube-" + u.path.strip("/")
+    elif u.netloc:
+        slug_text = (u.netloc + u.path).strip("/")
+    else:
+        slug_text = url
+
+    slug_text = re.sub(r"[^A-Za-z0-9ก-๙._-]+", "-", slug_text).strip("-")
+    slug = slug_text[:90] or "content"
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    md_filename = f"{stamp}-{slug}.md"
+    md_filepath = os.path.join(output_dir, md_filename)
+
+    print("[web/file] Converting to clean Markdown...")
+
+    python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
+    if not os.path.exists(python_exe):
+        python_exe = sys.executable
+
+    html_to_md_script = os.path.join(REPO_ROOT, "scripts", "html_to_md.py")
+    any_to_md_script = os.path.join(REPO_ROOT, "scripts", "any_to_md.py")
+
+    # Run html_to_md.py
+    cmd = [python_exe, html_to_md_script, url, "-o", md_filepath]
+    res = subprocess.run(cmd)
+
+    if res.returncode != 0:
+        # Fallback to any_to_md.py
+        cmd = [python_exe, any_to_md_script, url, "-o", md_filepath]
+        res = subprocess.run(cmd)
+
+    if res.returncode == 0 and os.path.exists(md_filepath):
+        print(f"\n[ok] {url} → {md_filepath} (engine: html-to-markdown)")
+        print("\nDone.")
+        print("Markdown:")
+        print(md_filepath)
+
+        try:
+            subprocess.run(["open", "-R", md_filepath])
+        except Exception:
+            pass
+        return True
+    else:
+        print(f"[error] Failed to convert page: {url}")
+        return False
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         # No arguments -> start interactive mode
         interactive_loop()
         return 0
-        
+
     arg1 = sys.argv[1].lower()
-    
+
+    # Check if first argument is a URL, or -docs / -page command
+    is_url_arg = arg1.startswith(("http://", "https://"))
+    is_docs_command = arg1 in ("-docs", "--docs", "docs")
+    is_page_command = arg1 in ("-page", "--page", "page")
+
+    if is_docs_command or is_page_command or is_url_arg:
+        # Resolve target URL and extra args
+        if is_docs_command or is_page_command:
+            if len(sys.argv) < 3:
+                print(f"[error] Please specify a target URL.")
+                print(f"Usage: python3 scripts/huashu_cli.py {arg1} <url> [options]")
+                return 1
+            url = sys.argv[2]
+            extra_args = sys.argv[3:]
+        else:
+            url = sys.argv[1]
+            extra_args = sys.argv[2:]
+
+        # Ensure it's a valid URL
+        if not url.startswith(("http://", "https://")):
+            print(f"[error] Invalid URL: {url}")
+            return 1
+
+        # Parse extra options
+        import argparse
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("--max-pages", type=int, default=100)
+        parser.add_argument("--delay", type=float, default=0.5)
+        parser.add_argument("--output-dir", default=None)
+        opts, _ = parser.parse_known_args(extra_args)
+
+        # Route
+        if is_docs_command:
+            print(f"Forced docs crawl requested for: {url}")
+            sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+            import docs_crawl
+            out_dir = opts.output_dir or os.path.join(REPO_ROOT, "outputs", "auto")
+            return docs_crawl.crawl_docs(url, opts.max_pages, opts.delay, out_dir)
+
+        elif is_page_command:
+            print(f"Forced single page conversion requested for: {url}")
+            success = run_single_page_conversion(url, opts.output_dir)
+            return 0 if success else 1
+
+        else:
+            # Plain URL: auto-classify
+            sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+            import docs_crawl
+            print(f"Running smart classification on URL: {url}")
+            is_docs, signals = docs_crawl.classify_url(url)
+
+            if is_docs:
+                print(f"Detected docs site. Crawling up to {opts.max_pages} pages...")
+                print("Signals matched:")
+                for sig in signals:
+                    print(f" - {sig}")
+                out_dir = opts.output_dir or os.path.join(REPO_ROOT, "outputs", "auto")
+                return docs_crawl.crawl_docs(url, opts.max_pages, opts.delay, out_dir)
+            else:
+                print("Detected single page. Converting one page...")
+                success = run_single_page_conversion(url, opts.output_dir)
+                return 0 if success else 1
+
     if arg1 in ("-help", "--help", "-h", "help"):
         print_help()
         return 0
