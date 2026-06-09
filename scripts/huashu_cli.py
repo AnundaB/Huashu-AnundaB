@@ -359,6 +359,7 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -docs <url>                         Force docs crawl of a site.
   python3 scripts/huashu_cli.py -page <url>                         Force single-page web conversion.
   python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
+  python3 scripts/huashu_cli.py -x-browser <url>                    Force browser-assisted X/Twitter post extraction.
   python3 scripts/huashu_cli.py -clipboard                          Import X/Twitter content from clipboard.
   python3 scripts/huashu_cli.py <url>                               Smart docs-site crawl or single-page conversion.
   python3 scripts/huashu_cli.py -help                               Show this help message.
@@ -515,7 +516,7 @@ def main() -> int:
     arg1 = sys.argv[1].lower()
 
     # Route X-specific commands or clipboard fallbacks first
-    is_x_command = arg1 in ("-x", "--x")
+    is_x_command = arg1 in ("-x", "--x", "-x-browser", "--x-browser")
     is_clipboard_command = arg1 in ("-clipboard", "--clipboard", "-x-clipboard", "--x-clipboard")
 
     if is_x_command or is_clipboard_command:
@@ -535,6 +536,8 @@ def main() -> int:
             if not url.startswith(("http://", "https://")):
                 print(f"[error] Invalid URL: {url}")
                 return 1
+            if arg1 in ("-x-browser", "--x-browser"):
+                cmd.append("--browser")
             cmd.append(url)
             cmd.extend(sys.argv[3:])
 

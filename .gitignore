@@ -10,3 +10,4 @@ inputs/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+outputs/browser-profiles/
