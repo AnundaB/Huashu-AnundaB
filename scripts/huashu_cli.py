@@ -344,6 +344,32 @@ def run_latest():
     print("="*50 + "\n")
 
 
+def run_topics(run_dir: str, extra_args: list[str] = None) -> bool:
+    """
+    Groups related papers into concept/objective-aligned topic packs.
+    """
+    if not os.path.exists(run_dir):
+        print(f"[error] Run directory does not exist: {run_dir}")
+        return False
+
+    python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
+    if not os.path.exists(python_exe):
+        python_exe = sys.executable or "python3"
+
+    topics_script = os.path.join(REPO_ROOT, "scripts", "research_topic_packs.py")
+    cmd = [python_exe, topics_script, run_dir]
+    if extra_args:
+        cmd.extend(extra_args)
+
+    print(f"Running Topic Pack Builder: {' '.join(cmd)}")
+    try:
+        subprocess.run(cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[error] Topic pack builder failed: {e}")
+        return False
+
+
 def print_help():
     """
     Prints human-friendly CLI usage guidance.
@@ -356,6 +382,8 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -search "<query>"                   Query similarity search over local paper vectors.
   python3 scripts/huashu_cli.py -note "<question>"                  Run the Research Council to write a markdown note.
   python3 scripts/huashu_cli.py -latest                             Show directories and details of the latest runs.
+  python3 scripts/huashu_cli.py -topics <consensus-run-dir>         Build concept-aligned research topic packs.
+  python3 scripts/huashu_cli.py -topics-latest                      Build topic packs for the latest consensus run.
   python3 scripts/huashu_cli.py -docs <url>                         Force docs crawl of a site.
   python3 scripts/huashu_cli.py -page <url>                         Force single-page web conversion.
   python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
@@ -435,6 +463,18 @@ def interactive_loop():
                 run_note(arg)
             elif cmd == "latest":
                 run_latest()
+            elif cmd == "topics":
+                if not arg:
+                    print("[error] Command 'topics' requires a Consensus run directory.")
+                    continue
+                run_topics(arg)
+            elif cmd == "topics-latest":
+                run_dir = get_latest_run_dir()
+                if run_dir:
+                    print(f"Using latest consensus run directory: {run_dir}")
+                    run_topics(run_dir)
+                else:
+                    print("[error] No consensus run found.")
             else:
                 print(f"[error] Unknown command: '{cmd}'. Type 'help' for usage examples.")
         except KeyboardInterrupt:
@@ -661,6 +701,24 @@ def main() -> int:
     elif arg1 in ("-latest", "--latest", "latest"):
         run_latest()
         return 0
+    elif arg1 in ("-topics", "--topics", "topics"):
+        if len(sys.argv) < 3:
+            print("[error] Please specify a Consensus run directory.")
+            print("Usage: python3 scripts/huashu_cli.py -topics <consensus-run-dir>")
+            return 1
+        run_dir = sys.argv[2]
+        extra_args = sys.argv[3:]
+        success = run_topics(run_dir, extra_args)
+        return 0 if success else 1
+    elif arg1 in ("-topics-latest", "--topics-latest", "topics-latest"):
+        run_dir = get_latest_run_dir()
+        if not run_dir:
+            print("[error] No consensus run found. Run -ingest first.")
+            return 1
+        print(f"Using latest consensus run directory: {run_dir}")
+        extra_args = sys.argv[2:]
+        success = run_topics(run_dir, extra_args)
+        return 0 if success else 1
     else:
         # Route to legacy any-to-markdown/clean Markdown script
         legacy_script = "/Users/AnundaB/bin/huashu"
