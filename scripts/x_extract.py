@@ -148,12 +148,33 @@ def strip_query_and_normalize(u: str) -> str:
     path = path.replace("/status/", "/article/")
     return urllib.parse.urlunparse((p.scheme, p.netloc, path, '', '', ''))
 
-def get_active_chrome_url() -> str:
+def extract_x_id(url: str) -> str:
+    parsed = urllib.parse.urlparse(normalize_url(url))
+    path_parts = [p for p in parsed.path.split('/') if p]
+    if len(path_parts) >= 3 and path_parts[1] in ("status", "article"):
+        return path_parts[2]
+    return ""
+
+def match_x_urls(requested: str, active: str) -> bool:
+    if not requested or not active:
+        return False
+        
+    req_id = extract_x_id(requested)
+    if req_id and req_id in active:
+        return True
+        
+    req_norm = strip_query_and_normalize(requested)
+    act_norm = strip_query_and_normalize(active)
+    return req_norm == act_norm
+
+def get_active_chrome_tab_info() -> tuple[str, str]:
     script = """
     if application "Google Chrome" is running then
         tell application "Google Chrome"
             if exists window 1 then
-                return URL of active tab of window 1
+                set tabUrl to URL of active tab of window 1
+                set tabTitle to title of active tab of window 1
+                return tabUrl & "|||" & tabTitle
             end if
         end tell
     end if
@@ -161,9 +182,13 @@ def get_active_chrome_url() -> str:
     """
     try:
         res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
-        return res.stdout.strip()
+        out = res.stdout.strip()
+        if "|||" in out:
+            parts = out.split("|||", 1)
+            return parts[0], parts[1]
+        return out, ""
     except Exception:
-        return ""
+        return "", ""
 
 def extract_chrome_content() -> tuple[str, str, str]:
     script = """
@@ -218,13 +243,13 @@ def extract_x_active_chrome(url: str, output_dir: str) -> int:
     """Uses AppleScript to extract content from the already-open active Chrome tab."""
     url = normalize_url(url)
 
-    active_url = get_active_chrome_url()
+    active_url, active_title = get_active_chrome_tab_info()
 
-    expected_norm = strip_query_and_normalize(url)
-    active_norm = strip_query_and_normalize(active_url)
-
-    if expected_norm != active_norm:
+    if not match_x_urls(url, active_url):
         print(f"Please open this X URL in your logged-in Chrome active tab, then run the same huashu command again:\n{url}")
+        print(f"Requested URL: {url}")
+        print(f"Active Chrome URL: {active_url}")
+        print(f"Active Chrome title: {active_title}")
         return 0
 
     print("Extracting content from active Chrome tab...")
