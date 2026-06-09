@@ -134,74 +134,101 @@ Manually imported from clipboard.
 
 
 def extract_x(url: str, output_dir: str) -> int:
-    """Attempts public extraction. Writes diagnostic fallback MD if blocked."""
+    """Uses AppleScript to extract the rendered content from the active Chrome tab."""
+    return extract_x_active_chrome(url, output_dir)
+
+
+def strip_query_and_normalize(u: str) -> str:
+    if not u:
+        return ""
+    p = urllib.parse.urlparse(normalize_url(u))
+    path = p.path.rstrip('/')
+    path = path.replace("/status/", "/article/")
+    return urllib.parse.urlunparse((p.scheme, p.netloc, path, '', '', ''))
+
+def get_active_chrome_url() -> str:
+    script = """
+    if application "Google Chrome" is running then
+        tell application "Google Chrome"
+            if exists window 1 then
+                return URL of active tab of window 1
+            end if
+        end tell
+    end if
+    return ""
+    """
+    try:
+        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        return res.stdout.strip()
+    except Exception:
+        return ""
+
+def extract_chrome_content() -> tuple[str, str, str]:
+    script = """
+    tell application "Google Chrome"
+        set activeTab to active tab of window 1
+        set tabTitle to title of activeTab
+        
+        try
+            set js to "(() => {
+                let text = '';
+                let articles = document.querySelectorAll('article');
+                if (articles.length > 0) {
+                    for (let a of articles) {
+                        text += a.innerText + '\\n\\n---\\n\\n';
+                    }
+                } else {
+                    text = document.body.innerText;
+                }
+                return text;
+            })();"
+            set tabContent to execute activeTab javascript js
+            return "SUCCESS|||" & tabTitle & "|||" & tabContent
+        on error errMsg
+            return "BLOCKED|||" & errMsg
+        end try
+    end tell
+    """
+    try:
+        res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        out = res.stdout.strip()
+        if out.startswith("SUCCESS|||"):
+            parts = out.split("|||", 2)
+            title = parts[1] if len(parts) > 1 else ""
+            content = parts[2] if len(parts) > 2 else ""
+            if not content or len(content.split()) < 5:
+                return "failed", title, content
+            return "success", title, content
+        elif out.startswith("BLOCKED|||"):
+            return "blocked", "", out.split("|||", 1)[1]
+        else:
+            return "failed", "", out
+    except Exception as e:
+        return "failed", "", str(e)
+
+
+def extract_x_active_chrome(url: str, output_dir: str) -> int:
+    """Uses AppleScript to extract content from the already-open active Chrome tab."""
     url = normalize_url(url)
     filepath = generate_filename(url, output_dir)
 
-    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    html = ""
-    fetch_err = None
+    active_url = get_active_chrome_url()
+    
+    expected_norm = strip_query_and_normalize(url)
+    active_norm = strip_query_and_normalize(active_url)
 
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": ua})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read()
-            charset = resp.headers.get_content_charset() or "utf-8"
-            html = raw.decode(charset, errors="replace")
-    except Exception as e:
-        fetch_err = str(e)
-
-    soup = None
-    if html:
-        try:
-            soup = BeautifulSoup(html, "html.parser")
-        except Exception:
-            pass
-
-    # Check Quality
-    status = "failed"
-    note = "Failed to fetch page"
-    if fetch_err:
-        note = f"Fetch exception: {fetch_err}"
-    elif soup:
-        status, note = check_quality(html, soup)
-
-    if status == "success":
-        # Extract title and description
-        title = soup.title.string.strip() if soup.title and soup.title.string else "X Post"
-        desc = ""
-        meta_desc = soup.find("meta", property="og:description") or soup.find("meta", name="description")
-        if meta_desc:
-            desc = meta_desc.get("content", "").strip()
-
-        md_content = f"""---
-source: huashu
-type: x-content
-url: {url}
-status: success
----
-
-# {title}
-
-Source: {url}
-
-## Content
-
-{desc or "Public static content extracted."}
-
-## Extraction Notes
-
-Extracted via public static tags.
-"""
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(md_content)
-        print(f"\n[ok] Extracted X content to: {filepath}")
+    if expected_norm != active_norm:
+        print(f"Please open this X URL in your logged-in Chrome active tab, then run the same huashu command again:\n{url}")
         return 0
-    else:
-        # Blocked/Failed fallback: save diagnostic MD and print error
-        sys.stderr.write("X content could not be extracted publicly. Try browser/manual clipboard fallback.\n")
 
-        # Diagnostic Markdown file creation
+    print("Extracting content from active Chrome tab...")
+    status, title, content = extract_chrome_content()
+
+    if status == "blocked":
+        print("Enable Chrome > View > Developer > Allow JavaScript from Apple Events,")
+        print("or use:")
+        print("huashu -x-clipboard")
+        
         diagnostic_content = f"""---
 source: huashu
 type: x-content
@@ -215,24 +242,87 @@ Source: {url}
 
 ## Content
 
-X content could not be extracted publicly. Try browser/manual clipboard fallback.
+AppleScript JavaScript execution is blocked.
 
 ## Extraction Notes
 
-Extraction failed: {note}
+Error: {content}
 """
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(diagnostic_content)
+        return 1
 
-        # Print diagnostic path to stdout for user visibility
-        print(f"Saved diagnostic state to: {filepath}")
-        return 0
+    if status == "failed":
+        print("Extraction quality failed. The page might not have rendered correctly.")
+        print("Suggest using:")
+        print("huashu -x-clipboard")
+        
+        diagnostic_content = f"""---
+source: huashu
+type: x-content
+url: {url}
+status: failed
+---
+
+# X Extraction Failed
+
+Source: {url}
+
+## Content
+
+Quality check failed. Content extracted:
+{content}
+"""
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(diagnostic_content)
+        return 1
+
+    # Success
+    md_content = f"""---
+source: huashu
+type: x-content
+extraction_mode: active_chrome
+url: {url}
+status: success
+---
+
+# {title}
+
+Source: {url}
+
+## Content
+
+{content}
+
+## Extraction Notes
+
+Extracted via active Chrome tab using AppleScript.
+"""
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(md_content)
+
+    print(f"\n[ok] Active Chrome X content saved to: {filepath}")
+    
+    try:
+        subprocess.run(["open", "-R", filepath])
+    except Exception:
+        pass
+
+    return 0
+
+
+def extract_x_browser(url: str, output_dir: str) -> int:
+    """Deprecated Playwright browser mode. Routes to active Chrome mode."""
+    print("Warning: -x-browser mode is deprecated. Using active Chrome mode instead.")
+    print(f"Please use plain `huashu \"{url}\"` with the X page already open in logged-in Chrome.")
+    return extract_x_active_chrome(url, output_dir)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="X/Twitter post extractor for huashu")
     parser.add_argument("url", nargs="?", help="URL of the X/Twitter post")
     parser.add_argument("--clipboard", action="store_true", help="Import from clipboard instead")
+    parser.add_argument("--browser", action="store_true", help="Use browser-assisted extraction")
     parser.add_argument("--output-dir", help="Output directory")
 
     args, _ = parser.parse_known_args()
@@ -248,6 +338,9 @@ def main() -> int:
     if not args.url:
         sys.stderr.write("[error] Must specify a URL or --clipboard.\n")
         return 1
+
+    if args.browser:
+        return extract_x_browser(args.url, output_dir)
 
     return extract_x(args.url, output_dir)
 
