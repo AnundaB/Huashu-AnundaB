@@ -194,7 +194,9 @@ def run_ingest(filename: str, limit: str | None = None) -> bool:
         "--resolve-doi",
         "--download-pdf",
         "--html-fallback",
-        "--convert-md"
+        "--convert-md",
+        "--output-dir",
+        os.path.join(REPO_ROOT, "outputs", "consensus")
     ]
     if limit:
         cmd.extend(["--limit", limit])

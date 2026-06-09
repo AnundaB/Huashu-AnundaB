@@ -140,8 +140,8 @@ def build_index(run_dir: str, chunk_size: int, chunk_overlap: int) -> int:
             chunk_counter += 1
 
     if not chunks_data:
-        print("[error] No chunks found. Indexing aborted.")
-        return 1
+        print("[warn] Ingestion completed, but no Markdown artifacts were created. Memory index skipped.")
+        return 0
 
     # Build dense arrays
     vectors = np.vstack(vectors_list).astype(np.float32)

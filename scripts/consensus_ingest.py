@@ -22,6 +22,9 @@ import time
 import urllib.error
 import urllib.request
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -39,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--output-dir",
-        default="outputs/consensus",
+        default=os.path.join(REPO_ROOT, "outputs", "consensus"),
         help="Base directory for writing outputs. Default: outputs/consensus",
     )
     p.add_argument(
@@ -493,7 +496,7 @@ def main() -> int:
                                         md_dest_path = os.path.join(md_dir, md_filename)
                                         try:
                                             res_conv = subprocess.run(
-                                                [sys.executable, "scripts/any_to_md.py", pdf_dest_path, "-o", md_dest_path, "--quiet"],
+                                                [sys.executable, os.path.join(REPO_ROOT, "scripts", "any_to_md.py"), pdf_dest_path, "-o", md_dest_path, "--quiet"],
                                                 capture_output=True, text=True, timeout=60
                                             )
                                             if res_conv.returncode == 0:
@@ -555,7 +558,7 @@ def main() -> int:
                             html_to_md_performed = True
                             try:
                                 res = subprocess.run(
-                                    [sys.executable, "scripts/html_to_md.py", url_to_use, "-o", md_dest_path, "--quiet"],
+                                    [sys.executable, os.path.join(REPO_ROOT, "scripts", "html_to_md.py"), url_to_use, "-o", md_dest_path, "--quiet"],
                                     capture_output=True, text=True, timeout=30
                                 )
                                 if res.returncode == 0:
@@ -616,7 +619,7 @@ def main() -> int:
                         html_to_md_performed = True
                         try:
                             res = subprocess.run(
-                                [sys.executable, "scripts/html_to_md.py", url, "-o", md_dest_path, "--quiet"],
+                                [sys.executable, os.path.join(REPO_ROOT, "scripts", "html_to_md.py"), url, "-o", md_dest_path, "--quiet"],
                                 capture_output=True, text=True, timeout=30
                             )
                             if res.returncode == 0:

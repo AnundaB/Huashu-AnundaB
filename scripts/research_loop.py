@@ -13,6 +13,9 @@ import os
 import sys
 import numpy as np
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 # Adjust path to import research_memory_index
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from research_memory_index import text_to_vector_128, HAS_TURBOVEC
@@ -218,7 +221,7 @@ def main() -> int:
     p.add_argument("run_dir", help="Consensus run directory containing the memory index")
     p.add_argument("question", help="Research question to analyze")
     p.add_argument("-k", "--top-k", type=int, default=3, help="Number of chunks to retrieve (default: 3)")
-    p.add_argument("--output-dir", default="outputs/research-runs", help="Base output folder for research runs")
+    p.add_argument("--output-dir", default=os.path.join(REPO_ROOT, "outputs", "research-runs"), help="Base output folder for research runs")
     p.add_argument("--max-iterations", type=int, default=1, help="Max loop iteration budget")
 
     args = p.parse_args()
