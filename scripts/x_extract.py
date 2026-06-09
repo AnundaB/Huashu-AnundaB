@@ -26,8 +26,8 @@ def normalize_url(url: str) -> str:
     return urllib.parse.urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
 
 
-def generate_filename(url: str, output_dir: str) -> str:
-    """Generates standard filename YYYYMMDD-x-username-id.md."""
+def generate_filename(url: str, output_dir: str, mode: str = "active") -> str:
+    """Generates standard filename YYYYMMDD-x-[mode]-username-id.md."""
     stamp = datetime.datetime.now().strftime("%Y%m%d")
     parsed = urllib.parse.urlparse(url)
     path_parts = [p for p in parsed.path.split("/") if p]
@@ -43,7 +43,8 @@ def generate_filename(url: str, output_dir: str) -> str:
     username = re.sub(r'[^a-zA-Z0-9_-]', '', username)
     post_id = re.sub(r'[^a-zA-Z0-9_-]', '', post_id)
 
-    return os.path.join(output_dir, f"{stamp}-x-{username}-{post_id}.md")
+    mode_part = f"-{mode}" if mode else ""
+    return os.path.join(output_dir, f"{stamp}-x{mode_part}-{username}-{post_id}.md")
 
 
 def check_quality(html: str, soup: BeautifulSoup) -> tuple[str, str]:
@@ -97,12 +98,13 @@ def import_from_clipboard(output_dir: str) -> int:
         content_text = text
 
     stamp = datetime.datetime.now().strftime("%Y%m%d")
-    filename = f"{stamp}-x-{username}-{post_id}.md"
+    filename = f"{stamp}-x-clipboard-{username}-{post_id}.md"
     filepath = os.path.join(output_dir, filename)
 
     md_content = f"""---
 source: huashu
 type: x-content
+extraction_mode: clipboard
 url: {url}
 status: success
 ---
@@ -168,7 +170,7 @@ def extract_chrome_content() -> tuple[str, str, str]:
     tell application "Google Chrome"
         set activeTab to active tab of window 1
         set tabTitle to title of activeTab
-        
+
         try
             set js to "(() => {
                 let text = '';
@@ -196,6 +198,11 @@ def extract_chrome_content() -> tuple[str, str, str]:
             parts = out.split("|||", 2)
             title = parts[1] if len(parts) > 1 else ""
             content = parts[2] if len(parts) > 2 else ""
+
+            # Quality check for clipboard poison/test data
+            if "This is a clipboard test" in content or "CLIPBOARD_POISON_SHOULD_NOT_APPEAR" in content:
+                return "failed", title, "Clipboard poison detected in active Chrome extraction."
+
             if not content or len(content.split()) < 5:
                 return "failed", title, content
             return "success", title, content
@@ -210,10 +217,9 @@ def extract_chrome_content() -> tuple[str, str, str]:
 def extract_x_active_chrome(url: str, output_dir: str) -> int:
     """Uses AppleScript to extract content from the already-open active Chrome tab."""
     url = normalize_url(url)
-    filepath = generate_filename(url, output_dir)
 
     active_url = get_active_chrome_url()
-    
+
     expected_norm = strip_query_and_normalize(url)
     active_norm = strip_query_and_normalize(active_url)
 
@@ -225,10 +231,11 @@ def extract_x_active_chrome(url: str, output_dir: str) -> int:
     status, title, content = extract_chrome_content()
 
     if status == "blocked":
+        filepath = generate_filename(url, output_dir, "blocked")
         print("Enable Chrome > View > Developer > Allow JavaScript from Apple Events,")
         print("or use:")
         print("huashu -x-clipboard")
-        
+
         diagnostic_content = f"""---
 source: huashu
 type: x-content
@@ -253,10 +260,9 @@ Error: {content}
         return 1
 
     if status == "failed":
-        print("Extraction quality failed. The page might not have rendered correctly.")
-        print("Suggest using:")
-        print("huashu -x-clipboard")
-        
+        filepath = generate_filename(url, output_dir, "failed")
+        print("Active Chrome extraction failed. Use huashu -x-clipboard if you want clipboard fallback.")
+
         diagnostic_content = f"""---
 source: huashu
 type: x-content
@@ -278,10 +284,11 @@ Quality check failed. Content extracted:
         return 1
 
     # Success
+    filepath = generate_filename(url, output_dir, "active")
     md_content = f"""---
 source: huashu
 type: x-content
-extraction_mode: active_chrome
+extraction_mode: active-chrome
 url: {url}
 status: success
 ---
@@ -302,7 +309,7 @@ Extracted via active Chrome tab using AppleScript.
         f.write(md_content)
 
     print(f"\n[ok] Active Chrome X content saved to: {filepath}")
-    
+
     try:
         subprocess.run(["open", "-R", filepath])
     except Exception:
