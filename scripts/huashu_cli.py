@@ -344,6 +344,22 @@ def run_latest():
     print("="*50 + "\n")
 
 
+def parse_topics_args(args: list[str]) -> tuple[str | None, list[str]]:
+    """
+    Parses CLI arguments for topic builder.
+    If the first argument is an option (starts with '-'), uses the latest Consensus run directory.
+    Otherwise, treats it as the run directory.
+    """
+    if not args:
+        return get_latest_run_dir(), []
+
+    first_arg = args[0]
+    if first_arg.startswith("-"):
+        return get_latest_run_dir(), args
+    else:
+        return first_arg, args[1:]
+
+
 def run_topics(run_dir: str, extra_args: list[str] = None) -> bool:
     """
     Groups related papers into concept/objective-aligned topic packs.
@@ -378,12 +394,12 @@ def print_help():
 Huashu Ingestion & Auto-Research CLI
 
 Usage (Command Line):
+  python3 scripts/huashu_cli.py -topics [<run-dir>]                 Build concept-aligned topic packs (uses latest run by default).
+  python3 scripts/huashu_cli.py -upload-ready [<run-dir>]           Regenerate upload-ready exports for a run.
   python3 scripts/huashu_cli.py -ingest <filename> [--limit <num>]  Ingest, clean, convert, and index research papers.
   python3 scripts/huashu_cli.py -search "<query>"                   Query similarity search over local paper vectors.
   python3 scripts/huashu_cli.py -note "<question>"                  Run the Research Council to write a markdown note.
   python3 scripts/huashu_cli.py -latest                             Show directories and details of the latest runs.
-  python3 scripts/huashu_cli.py -topics <consensus-run-dir>         Build concept-aligned research topic packs.
-  python3 scripts/huashu_cli.py -topics-latest                      Build topic packs for the latest consensus run.
   python3 scripts/huashu_cli.py -docs <url>                         Force docs crawl of a site.
   python3 scripts/huashu_cli.py -page <url>                         Force single-page web conversion.
   python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
@@ -464,10 +480,11 @@ def interactive_loop():
             elif cmd == "latest":
                 run_latest()
             elif cmd == "topics":
-                if not arg:
-                    print("[error] Command 'topics' requires a Consensus run directory.")
+                run_dir, extra_args = parse_topics_args(arg.split() if arg else [])
+                if not run_dir:
+                    print("[error] No consensus run found.")
                     continue
-                run_topics(arg)
+                run_topics(run_dir, extra_args)
             elif cmd == "topics-latest":
                 run_dir = get_latest_run_dir()
                 if run_dir:
@@ -475,6 +492,13 @@ def interactive_loop():
                     run_topics(run_dir)
                 else:
                     print("[error] No consensus run found.")
+            elif cmd == "upload-ready":
+                run_dir, extra_args = parse_topics_args(arg.split() if arg else [])
+                if not run_dir:
+                    print("[error] No consensus run found.")
+                    continue
+                extra_args.append("--upload-ready-only")
+                run_topics(run_dir, extra_args)
             else:
                 print(f"[error] Unknown command: '{cmd}'. Type 'help' for usage examples.")
         except KeyboardInterrupt:
@@ -702,12 +726,10 @@ def main() -> int:
         run_latest()
         return 0
     elif arg1 in ("-topics", "--topics", "topics"):
-        if len(sys.argv) < 3:
-            print("[error] Please specify a Consensus run directory.")
-            print("Usage: python3 scripts/huashu_cli.py -topics <consensus-run-dir>")
+        run_dir, extra_args = parse_topics_args(sys.argv[2:])
+        if not run_dir:
+            print("[error] No consensus run found. Run -ingest first.")
             return 1
-        run_dir = sys.argv[2]
-        extra_args = sys.argv[3:]
         success = run_topics(run_dir, extra_args)
         return 0 if success else 1
     elif arg1 in ("-topics-latest", "--topics-latest", "topics-latest"):
@@ -717,6 +739,14 @@ def main() -> int:
             return 1
         print(f"Using latest consensus run directory: {run_dir}")
         extra_args = sys.argv[2:]
+        success = run_topics(run_dir, extra_args)
+        return 0 if success else 1
+    elif arg1 in ("-upload-ready", "--upload-ready", "upload-ready"):
+        run_dir, extra_args = parse_topics_args(sys.argv[2:])
+        if not run_dir:
+            print("[error] No consensus run found. Run -ingest first.")
+            return 1
+        extra_args.append("--upload-ready-only")
         success = run_topics(run_dir, extra_args)
         return 0 if success else 1
     else:

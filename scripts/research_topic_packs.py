@@ -613,6 +613,177 @@ def synthesize_topic_pack(cluster_papers, theme_name=None):
         "methods_used": methods_used
     }
 
+
+def generate_upload_ready(run_dir):
+    topic_packs_dir = os.path.join(run_dir, "topic-packs")
+    upload_ready_dir = os.path.join(topic_packs_dir, "upload-ready")
+    os.makedirs(upload_ready_dir, exist_ok=True)
+
+    # Clean previous files in upload-ready
+    for item in os.listdir(upload_ready_dir):
+        path = os.path.join(upload_ready_dir, item)
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+    # Find all cluster folders
+    cluster_folders = []
+    if os.path.exists(topic_packs_dir):
+        for item in os.listdir(topic_packs_dir):
+            path = os.path.join(topic_packs_dir, item)
+            if os.path.isdir(path) and item.startswith("cluster-") and item != "unclustered" and item != "upload-ready":
+                cluster_folders.append(item)
+
+    # Sort cluster folders by name
+    cluster_folders.sort()
+
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    topic_files_info = []
+    total_clustered_papers = 0
+
+    for idx, folder in enumerate(cluster_folders, 1):
+        cluster_path = os.path.join(topic_packs_dir, folder)
+        combined_path = os.path.join(cluster_path, "combined.md")
+        csv_path = os.path.join(cluster_path, "papers.csv")
+
+        if not os.path.exists(combined_path):
+            continue
+
+        # Parse slug and cluster ID from folder name
+        match = re.match(r'^(cluster-\d+)-(.*)$', folder)
+        if match:
+            cluster_id = match.group(1)
+            slug = match.group(2)
+        else:
+            cluster_id = f"cluster-{idx:03d}"
+            slug = folder
+
+        # Count papers from papers.csv
+        paper_count = 0
+        if os.path.exists(csv_path):
+            try:
+                with open(csv_path, "r", encoding="utf-8") as csvfile:
+                    reader = csv.reader(csvfile)
+                    header = next(reader, None)
+                    paper_count = sum(1 for row in reader)
+            except Exception:
+                pass
+        total_clustered_papers += paper_count
+
+        # Read combined.md content
+        try:
+            with open(combined_path, "r", encoding="utf-8") as f:
+                combined_content = f.read()
+        except Exception as e:
+            print(f"[warn] Failed to read combined.md for {folder}: {e}")
+            continue
+
+        # Extract title from combined.md
+        topic_title = "Topic Pack"
+        title_match = re.search(r'^#\s+(?:Topic:\s+)?(.*)$', combined_content, re.MULTILINE)
+        if title_match:
+            topic_title = title_match.group(1).strip()
+
+        # Write upload-ready file
+        padded_index = f"{idx:02d}"
+        upload_filename = f"{padded_index}-{slug}.md"
+        upload_filepath = os.path.join(upload_ready_dir, upload_filename)
+
+        frontmatter = f"""---
+topic_pack_id: {cluster_id}
+topic_title: {topic_title}
+paper_count: {paper_count}
+source_cluster_folder: {folder}
+generated_timestamp: {timestamp}
+---
+
+"""
+        try:
+            with open(upload_filepath, "w", encoding="utf-8") as f:
+                f.write(frontmatter + combined_content)
+        except Exception as e:
+            print(f"[warn] Failed to write upload-ready file {upload_filename}: {e}")
+            continue
+
+        topic_files_info.append({
+            "filename": upload_filename,
+            "id": cluster_id,
+            "title": topic_title,
+            "count": paper_count
+        })
+
+    # Read stats from index.md if present
+    total_ingested = 0
+    unclustered_count = 0
+    index_md_path = os.path.join(topic_packs_dir, "index.md")
+    if os.path.exists(index_md_path):
+        try:
+            with open(index_md_path, "r", encoding="utf-8") as f:
+                idx_content = f.read()
+
+            ingested_match = re.search(r'\*\s+\*\*Total Papers Ingested:\*\*\s+(\d+)', idx_content)
+            if ingested_match:
+                total_ingested = int(ingested_match.group(1))
+
+            unclustered_match = re.search(r'\*\s+\*\*Unclustered Papers:\*\*\s+(\d+)', idx_content)
+            if unclustered_match:
+                unclustered_count = int(unclustered_match.group(1))
+        except Exception:
+            pass
+
+    if total_ingested == 0:
+        total_ingested = total_clustered_papers + unclustered_count
+
+    # Write 00-topic-pack-index.md
+    index_filename = "00-topic-pack-index.md"
+    index_filepath = os.path.join(upload_ready_dir, index_filename)
+
+    list_rows = []
+    recommended_order = []
+    for info in topic_files_info:
+        list_rows.append(
+            f"| `{info['filename']}` | **{info['id']}** | {info['title']} | {info['count']} |"
+        )
+        recommended_order.append(
+            f"1. **{info['id']}**: Upload `{info['filename']}` (contains {info['count']} papers)"
+        )
+
+    list_table = "\n".join(list_rows) if list_rows else "| None | - | - | - |"
+    order_list = "\n".join(recommended_order) if recommended_order else "No topic packs available."
+
+    index_content = f"""# Upload-Ready Topic Packs Export Index
+
+This directory contains consolidated, single-file Markdown documents for each topic pack. These files are optimized for easy upload to LLMs such as ChatGPT, NotebookLM, or Claude.
+
+## Pipeline & Grouping Statistics
+* **Total Ingested Papers:** {total_ingested}
+* **Total Topic Packs:** {len(topic_files_info)}
+* **Total Clustered Papers:** {total_clustered_papers}
+* **Total Unclustered Papers:** {unclustered_count}
+* **Export Timestamp:** {timestamp}
+
+## List of Exported Topic Packs
+| Upload Filename | Topic Pack ID | Topic Title | Paper Count |
+|---|---|---|---|
+{list_table}
+
+## Recommended Upload Order
+For context optimization, upload these files to your target LLM/Notebook workspace in the following order:
+{order_list}
+"""
+    try:
+        with open(index_filepath, "w", encoding="utf-8") as f:
+            f.write(index_content)
+    except Exception as e:
+        print(f"[warn] Failed to write upload index: {e}")
+
+    print(f"Generated {len(topic_files_info)} upload-ready files and index under {upload_ready_dir}.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Consensus Research Topic Pack Builder")
     parser.add_argument("run_dir", help="Path to the consensus ingestion run directory")
@@ -621,12 +792,18 @@ def main():
     parser.add_argument("--max-cluster-size", type=int, default=25, help="Maximum papers in a topic pack")
     parser.add_argument("--strategy", choices=["theme-first", "similarity-only"], default="theme-first", help="Clustering strategy")
     parser.add_argument("--dry-run", action="store_true", help="Perform dry run without creating files")
+    parser.add_argument("--upload-ready-only", action="store_true", help="Regenerate upload-ready files from existing clusters without reclustering")
     args = parser.parse_args()
 
     run_dir = args.run_dir
     if not os.path.exists(run_dir):
         print(f"[error] Run directory does not exist: {run_dir}")
         sys.exit(1)
+
+    if args.upload_ready_only:
+        print(f"Regenerating upload-ready files under {run_dir}/topic-packs/upload-ready/...")
+        generate_upload_ready(run_dir)
+        sys.exit(0)
 
     papers_jsonl_path = os.path.join(run_dir, "metadata", "papers.jsonl")
     if not os.path.exists(papers_jsonl_path):
@@ -818,6 +995,16 @@ def main():
     os.makedirs(topic_packs_dir, exist_ok=True)
     os.makedirs(os.path.join(topic_packs_dir, "unclustered"), exist_ok=True)
 
+    # Clean previous cluster-* directories to prevent stale folders from polluting exports
+    for item in os.listdir(topic_packs_dir):
+        path = os.path.join(topic_packs_dir, item)
+        if os.path.isdir(path) and item.startswith("cluster-") and item not in ("unclustered", "upload-ready"):
+            import shutil
+            try:
+                shutil.rmtree(path)
+            except Exception:
+                pass
+
     # 1. Write individual cluster files
     for c_data in final_clusters_data:
         cluster_folder_name = f"{c_data['id']}-{c_data['slug']}"
@@ -999,6 +1186,9 @@ Total clusters formed: {len(final_clusters_data)}
 
     with open(candidate_path, "w", encoding="utf-8") as f:
         f.write(candidate_content)
+
+    # Generate upload-ready exports
+    generate_upload_ready(run_dir)
 
     print(f"\nSuccessfully built Consensus Topic Packs under {topic_packs_dir}.")
     print(f"Total Clusters: {len(final_clusters_data)}")
