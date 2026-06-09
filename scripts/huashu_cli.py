@@ -358,6 +358,8 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -latest                             Show directories and details of the latest runs.
   python3 scripts/huashu_cli.py -docs <url>                         Force docs crawl of a site.
   python3 scripts/huashu_cli.py -page <url>                         Force single-page web conversion.
+  python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
+  python3 scripts/huashu_cli.py -clipboard                          Import X/Twitter content from clipboard.
   python3 scripts/huashu_cli.py <url>                               Smart docs-site crawl or single-page conversion.
   python3 scripts/huashu_cli.py -help                               Show this help message.
 
@@ -512,6 +514,33 @@ def main() -> int:
 
     arg1 = sys.argv[1].lower()
 
+    # Route X-specific commands or clipboard fallbacks first
+    is_x_command = arg1 in ("-x", "--x")
+    is_clipboard_command = arg1 in ("-clipboard", "--clipboard", "-x-clipboard", "--x-clipboard")
+
+    if is_x_command or is_clipboard_command:
+        python_exe = sys.executable or "python3"
+        x_extract_script = os.path.join(REPO_ROOT, "scripts", "x_extract.py")
+        cmd = [python_exe, x_extract_script]
+
+        if is_clipboard_command:
+            cmd.append("--clipboard")
+            cmd.extend(sys.argv[2:])
+        else:
+            if len(sys.argv) < 3:
+                print("[error] Please specify a target URL.")
+                print(f"Usage: python3 scripts/huashu_cli.py {sys.argv[1]} <url> [options]")
+                return 1
+            url = sys.argv[2]
+            if not url.startswith(("http://", "https://")):
+                print(f"[error] Invalid URL: {url}")
+                return 1
+            cmd.append(url)
+            cmd.extend(sys.argv[3:])
+
+        res = subprocess.run(cmd)
+        return res.returncode
+
     # Check if first argument is a URL, or -docs / -page command
     is_url_arg = arg1.startswith(("http://", "https://"))
     is_docs_command = arg1 in ("-docs", "--docs", "docs")
@@ -534,6 +563,27 @@ def main() -> int:
         if not url.startswith(("http://", "https://")):
             print(f"[error] Invalid URL: {url}")
             return 1
+
+        # Check if URL is an X/Twitter URL to route to x_extract.py
+        import urllib.parse
+        is_x = False
+        try:
+            parsed = urllib.parse.urlparse(url)
+            netloc = parsed.netloc.lower()
+            if ":" in netloc:
+                netloc = netloc.split(":")[0]
+            if netloc in ("x.com", "twitter.com", "mobile.twitter.com") or netloc.endswith((".x.com", ".twitter.com")):
+                is_x = True
+        except Exception:
+            pass
+
+        if is_x:
+            python_exe = sys.executable or "python3"
+            x_extract_script = os.path.join(REPO_ROOT, "scripts", "x_extract.py")
+            cmd = [python_exe, x_extract_script, url]
+            cmd.extend(extra_args)
+            res = subprocess.run(cmd)
+            return res.returncode
 
         # Parse extra options
         import argparse
