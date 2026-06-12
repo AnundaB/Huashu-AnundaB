@@ -608,6 +608,25 @@ def main() -> int:
         res = subprocess.run(cmd)
         return res.returncode
 
+    is_x_video_command = arg1 in ("-x-video", "--x-video", "-x-video-md", "--x-video-md")
+
+    if is_x_video_command:
+        if len(sys.argv) < 3:
+            print("[error] Please specify a target X URL.")
+            print(f"Usage: python3 scripts/huashu_cli.py {sys.argv[1]} <url> [options]")
+            return 1
+        url = sys.argv[2]
+        extra_args = sys.argv[3:]
+        if not url.startswith(("http://", "https://")):
+            print(f"[error] Invalid URL: {url}")
+            return 1
+        python_exe = sys.executable or "python3"
+        x_video_download_script = os.path.join(REPO_ROOT, "scripts", "x_video_download.py")
+        cmd = [python_exe, x_video_download_script, url]
+        cmd.extend(extra_args)
+        res = subprocess.run(cmd)
+        return res.returncode
+
     is_youtube_command = arg1 in ("-youtube", "--youtube")
 
     if is_youtube_command:
@@ -667,6 +686,27 @@ def main() -> int:
             python_exe = sys.executable or "python3"
             youtube_extract_script = os.path.join(REPO_ROOT, "scripts", "youtube_extract.py")
             cmd = [python_exe, youtube_extract_script, url]
+            cmd.extend(extra_args)
+            res = subprocess.run(cmd)
+            return res.returncode
+
+        # Check if URL is an X video URL to route to x_video_download.py
+        is_x_video = False
+        try:
+            parsed = urllib.parse.urlparse(url)
+            netloc = parsed.netloc.lower()
+            if ":" in netloc:
+                netloc = netloc.split(":")[0]
+            if netloc in ("x.com", "twitter.com", "mobile.twitter.com") or netloc.endswith((".x.com", ".twitter.com")):
+                if "/video/" in parsed.path.lower():
+                    is_x_video = True
+        except Exception:
+            pass
+
+        if is_x_video:
+            python_exe = sys.executable or "python3"
+            x_video_download_script = os.path.join(REPO_ROOT, "scripts", "x_video_download.py")
+            cmd = [python_exe, x_video_download_script, url]
             cmd.extend(extra_args)
             res = subprocess.run(cmd)
             return res.returncode
