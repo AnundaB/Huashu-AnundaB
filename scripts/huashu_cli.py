@@ -627,6 +627,25 @@ def main() -> int:
         res = subprocess.run(cmd)
         return res.returncode
 
+    is_chatgpt_command = arg1 in ("-chatgpt", "--chatgpt", "-chatgpt-full", "--chatgpt-full")
+    is_chatgpt_export_command = arg1 in ("-chatgpt-export", "--chatgpt-export")
+
+    if is_chatgpt_command or is_chatgpt_export_command:
+        if len(sys.argv) < 3:
+            print(f"[error] Please specify a target ChatGPT URL or conversations.json export file.")
+            print(f"Usage: python3 scripts/huashu_cli.py {sys.argv[1]} <url_or_file> [options]")
+            return 1
+        python_exe = sys.executable or "python3"
+        chatgpt_script = os.path.join(REPO_ROOT, "scripts", "chatgpt_extract.py")
+        cmd = [python_exe, chatgpt_script]
+        if is_chatgpt_export_command:
+            cmd.append("-chatgpt-export")
+        elif arg1 in ("-chatgpt-full", "--chatgpt-full"):
+            cmd.append("--full")
+        cmd.extend(sys.argv[2:])
+        res = subprocess.run(cmd)
+        return res.returncode
+
     is_youtube_command = arg1 in ("-youtube", "--youtube")
 
     if is_youtube_command:
@@ -686,6 +705,27 @@ def main() -> int:
             python_exe = sys.executable or "python3"
             youtube_extract_script = os.path.join(REPO_ROOT, "scripts", "youtube_extract.py")
             cmd = [python_exe, youtube_extract_script, url]
+            cmd.extend(extra_args)
+            res = subprocess.run(cmd)
+            return res.returncode
+
+        # Check if URL is a ChatGPT conversation URL to route to chatgpt_extract.py
+        is_chatgpt = False
+        try:
+            parsed = urllib.parse.urlparse(url)
+            netloc = parsed.netloc.lower()
+            if ":" in netloc:
+                netloc = netloc.split(":")[0]
+            if netloc in ("chatgpt.com", "chat.openai.com") or netloc.endswith((".chatgpt.com", ".chat.openai.com")):
+                if "/c/" in parsed.path.lower():
+                    is_chatgpt = True
+        except Exception:
+            pass
+
+        if is_chatgpt:
+            python_exe = sys.executable or "python3"
+            chatgpt_script = os.path.join(REPO_ROOT, "scripts", "chatgpt_extract.py")
+            cmd = [python_exe, chatgpt_script, url]
             cmd.extend(extra_args)
             res = subprocess.run(cmd)
             return res.returncode
