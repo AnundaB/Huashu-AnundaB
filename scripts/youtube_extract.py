@@ -123,11 +123,17 @@ def run_extraction(url: str, output_dir: str | None = None) -> int:
 
     print(f"[youtube] Fetching metadata for video ID {video_id}...")
 
+    # Use a clean URL without list params to ensure yt-dlp doesn't try to fetch a playlist
+    clean_url = f"https://www.youtube.com/watch?v={video_id}"
+
     # Step 1: Dump JSON
-    cmd = [python_exe, "-m", "yt_dlp", "--dump-json", "--skip-download", url]
+    cmd = [python_exe, "-m", "yt_dlp", "--dump-json", "--skip-download", "--no-playlist", clean_url]
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", check=True)
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", check=True, timeout=60)
         metadata = json.loads(res.stdout)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write("[error] yt-dlp metadata fetch timed out after 60 seconds.\n")
+        return 1
     except subprocess.CalledProcessError as e:
         sys.stderr.write(f"[error] Failed to fetch metadata using yt-dlp: {e.stderr}\n")
         return 1
@@ -160,9 +166,13 @@ def run_extraction(url: str, output_dir: str | None = None) -> int:
         sys.stderr.write("[error] No subtitles or automatic captions available for this video.\n")
         return 1
 
-    # Temporary directory for downloading subtitles
-    tmp_dir = os.path.join(output_dir, "tmp_yt")
-    os.makedirs(tmp_dir, exist_ok=True)
+    import tempfile
+    import shutil
+
+    if output_dir:
+        tmp_dir = tempfile.mkdtemp(dir=output_dir)
+    else:
+        tmp_dir = tempfile.mkdtemp()
     output_template = os.path.join(tmp_dir, "%(id)s")
 
     selected_lang = None
@@ -190,9 +200,13 @@ def run_extraction(url: str, output_dir: str | None = None) -> int:
             cmd_dl.extend(["--write-subs", "--sub-langs", lang])
         else:
             cmd_dl.extend(["--write-auto-subs", "--sub-langs", lang])
-        cmd_dl.append(url)
+        cmd_dl.append(clean_url)
 
-        dl_res = subprocess.run(cmd_dl, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        try:
+            dl_res = subprocess.run(cmd_dl, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", timeout=60)
+        except subprocess.TimeoutExpired:
+            print(f"[warn] Failed to download {source} caption '{lang}' due to timeout. Trying next option...")
+            continue
 
         # Verify if downloaded successfully
         expected_path = os.path.join(tmp_dir, f"{video_id}.{lang}.vtt")
@@ -286,10 +300,10 @@ status: success
     print(f"caption_source: {selected_source}")
     print(f"status: success")
 
-    # Cleanup downloaded VTT file
+    # Cleanup temporary directory
     try:
-        if os.path.exists(vtt_file):
-            os.remove(vtt_file)
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
     except Exception:
         pass
 

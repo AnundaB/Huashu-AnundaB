@@ -671,6 +671,25 @@ def main() -> int:
         res = subprocess.run(cmd)
         return res.returncode
 
+    is_youtube_playlist_command = arg1 in ("-youtube-playlist", "--youtube-playlist")
+
+    if is_youtube_playlist_command:
+        if len(sys.argv) < 3:
+            print("[error] Please specify a target YouTube playlist URL.")
+            print(f"Usage: python3 scripts/huashu_cli.py {sys.argv[1]} <url> [--limit <num>]")
+            return 1
+        url = sys.argv[2]
+        extra_args = sys.argv[3:]
+        if not url.startswith(("http://", "https://")):
+            print(f"[error] Invalid URL: {url}")
+            return 1
+        python_exe = sys.executable or "python3"
+        playlist_extract_script = os.path.join(REPO_ROOT, "scripts", "youtube_playlist_extract.py")
+        cmd = [python_exe, playlist_extract_script, url]
+        cmd.extend(extra_args)
+        res = subprocess.run(cmd)
+        return res.returncode
+
     is_youtube_command = arg1 in ("-youtube", "--youtube")
 
     if is_youtube_command:
@@ -713,18 +732,30 @@ def main() -> int:
             print(f"[error] Invalid URL: {url}")
             return 1
 
-        # Check if URL is a YouTube URL to route to youtube_extract.py
+        # Check if URL is a YouTube URL to route to youtube_extract.py or playlist
         import urllib.parse
         is_youtube = False
+        is_youtube_playlist = False
         try:
             parsed = urllib.parse.urlparse(url)
             netloc = parsed.netloc.lower()
             if ":" in netloc:
                 netloc = netloc.split(":")[0]
             if netloc in ("youtube.com", "www.youtube.com", "youtu.be") or netloc.endswith((".youtube.com", ".youtu.be")):
-                is_youtube = True
+                if "/playlist" in parsed.path:
+                    is_youtube_playlist = True
+                else:
+                    is_youtube = True
         except Exception:
             pass
+
+        if is_youtube_playlist:
+            python_exe = sys.executable or "python3"
+            playlist_extract_script = os.path.join(REPO_ROOT, "scripts", "youtube_playlist_extract.py")
+            cmd = [python_exe, playlist_extract_script, url]
+            cmd.extend(extra_args)
+            res = subprocess.run(cmd)
+            return res.returncode
 
         if is_youtube:
             python_exe = sys.executable or "python3"
