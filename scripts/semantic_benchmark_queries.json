@@ -1,0 +1,52 @@
+[
+  {
+    "query": "algorithmic trading machine learning",
+    "expected_docs": [
+      "adesina-2024-algorithmic-trading-machine.md",
+      "addy-2024-algorithmic-trading-ai.md",
+      "botos-2025-algorithmic-trading-financial.md"
+    ]
+  },
+  {
+    "query": "validation overfitting financial graph",
+    "expected_docs": [
+      "01-validation-overfitting-financial-graph-clustering-algorithms.md",
+      "cluster-001-validation-overfitting-financial-graph-clustering-algorithms/combined.md"
+    ]
+  },
+  {
+    "query": "Jim Simons Medallion Renaissance statistical arbitrage",
+    "expected_docs": [
+      "cornell-2019-medallion-fund-ultimate.md",
+      "djanga-2017-too-easy-renaissance.md",
+      "ziemba-2011-postscript-renaissance-medallion.md"
+    ]
+  },
+  {
+    "query": "AI agents for automated research",
+    "expected_docs": [
+      "addy-2024-algorithmic-trading-ai.md",
+      "kaboor-2025-impacts-artificial-intelligence.md"
+    ]
+  },
+  {
+    "query": "agentic workflow tool factory code generation",
+    "expected_docs": [
+      "TOOL_FACTORY_PROTOCOL.md"
+    ]
+  },
+  {
+    "query": "Huashu CLI conversion markdown HTML extraction",
+    "expected_docs": [
+      "LOCAL_RESEARCH_INGESTION_TOOL_PRD.md",
+      "PHASE_2_RESOLVER_PLAN.md"
+    ]
+  },
+  {
+    "query": "matematika dunia financial modeling",
+    "expected_docs": [
+      "perdana-2025-matematika-dalam-dunia.md",
+      "leist-2016-physics-financial-modeling.md"
+    ]
+  }
+]
