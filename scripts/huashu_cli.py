@@ -405,6 +405,7 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
   python3 scripts/huashu_cli.py -x-browser <url>                    Force browser-assisted X/Twitter post extraction.
   python3 scripts/huashu_cli.py -clipboard                          Import X/Twitter content from clipboard.
+  python3 scripts/huashu_cli.py -organize-auto [--apply]            Organize legacy auto outputs into categorized folders.
   python3 scripts/huashu_cli.py <url>                               Smart docs-site crawl or single-page conversion.
   python3 scripts/huashu_cli.py -help                               Show this help message.
 
@@ -594,6 +595,14 @@ def main() -> int:
         return 0
 
     arg1 = sys.argv[1].lower()
+
+    if arg1 in ("-organize-auto", "--organize-auto"):
+        python_exe = sys.executable or "python3"
+        organize_script = os.path.join(REPO_ROOT, "scripts", "organize_auto_outputs.py")
+        cmd = [python_exe, organize_script]
+        cmd.extend(sys.argv[2:])
+        res = subprocess.run(cmd)
+        return res.returncode
 
     # Route X-specific commands or clipboard fallbacks first
     is_x_command = arg1 in ("-x", "--x", "-x-browser", "--x-browser")
