@@ -114,9 +114,8 @@ def run_extraction(url: str, output_dir: str | None = None) -> int:
         sys.stderr.write(f"[error] Could not extract video ID from URL: {url}\n")
         return 1
 
-    if not output_dir:
-        output_dir = os.path.join(REPO_ROOT, "outputs", "auto")
-    os.makedirs(output_dir, exist_ok=True)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
     if not os.path.exists(python_exe):
@@ -225,7 +224,12 @@ def run_extraction(url: str, output_dir: str | None = None) -> int:
     # Generate filename: YYYYMMDD-HHMMSS-youtube-<video_id>.md
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     md_filename = f"{stamp}-youtube-{video_id}.md"
-    md_filepath = os.path.join(output_dir, md_filename)
+    if output_dir:
+        md_filepath = os.path.join(output_dir, md_filename)
+    else:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        md_filepath = output_router.route_output(url, md_filename, "youtube")
 
     # Write output markdown content
     markdown_content = f"""source_type: youtube
@@ -261,6 +265,19 @@ status: success
 
     with open(md_filepath, "w", encoding="utf-8") as out_f:
         out_f.write(markdown_content)
+
+    try:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        output_router.register_output(
+            output_path=md_filepath,
+            source=url,
+            explicit_type="youtube",
+            title=title,
+            status="success"
+        )
+    except Exception as e:
+        print(f"[warn] Failed to register output in manifest/index: {e}")
 
     print(f"\n[ok] YouTube extraction success: {url} \u2192 {md_filepath}")
     print(f"saved Markdown path: {md_filepath}")

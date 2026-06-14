@@ -515,9 +515,8 @@ def run_single_page_conversion(url: str, output_dir: str | None = None) -> bool:
     import sys
     import urllib.parse
 
-    if not output_dir:
-        output_dir = os.path.join(REPO_ROOT, "outputs", "auto")
-    os.makedirs(output_dir, exist_ok=True)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     u = urllib.parse.urlparse(url)
     if "youtube.com" in u.netloc:
@@ -535,7 +534,12 @@ def run_single_page_conversion(url: str, output_dir: str | None = None) -> bool:
 
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     md_filename = f"{stamp}-{slug}.md"
-    md_filepath = os.path.join(output_dir, md_filename)
+    if output_dir:
+        md_filepath = os.path.join(output_dir, md_filename)
+    else:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        md_filepath = output_router.route_output(url, md_filename, "web")
 
     print("[web/file] Converting to clean Markdown...")
 
@@ -556,6 +560,18 @@ def run_single_page_conversion(url: str, output_dir: str | None = None) -> bool:
         res = subprocess.run(cmd)
 
     if res.returncode == 0 and os.path.exists(md_filepath):
+        try:
+            sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+            import output_router
+            output_router.register_output(
+                output_path=md_filepath,
+                source=url,
+                explicit_type="web",
+                title=slug,
+                status="success"
+            )
+        except Exception as e:
+            print(f"[warn] Failed to register output in manifest/index: {e}")
         print(f"\n[ok] {url} → {md_filepath} (engine: html-to-markdown)")
         print("\nDone.")
         print("Markdown:")
@@ -784,7 +800,7 @@ def main() -> int:
             print(f"Forced docs crawl requested for: {url}")
             sys.path.append(os.path.join(REPO_ROOT, "scripts"))
             import docs_crawl
-            out_dir = opts.output_dir or os.path.join(REPO_ROOT, "outputs", "auto")
+            out_dir = opts.output_dir
             return docs_crawl.crawl_docs(url, opts.max_pages, opts.delay, out_dir)
 
         elif is_page_command:
@@ -804,7 +820,7 @@ def main() -> int:
                 print("Signals matched:")
                 for sig in signals:
                     print(f" - {sig}")
-                out_dir = opts.output_dir or os.path.join(REPO_ROOT, "outputs", "auto")
+                out_dir = opts.output_dir
                 return docs_crawl.crawl_docs(url, opts.max_pages, opts.delay, out_dir)
             else:
                 print("Detected single page. Converting one page...")

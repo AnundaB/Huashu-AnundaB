@@ -26,7 +26,7 @@ def normalize_url(url: str) -> str:
     return urllib.parse.urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
 
 
-def generate_filename(url: str, output_dir: str, mode: str = "active") -> str:
+def generate_filename(url: str, output_dir: str | None = None, mode: str = "active") -> str:
     """Generates standard filename YYYYMMDD-x-[mode]-username-id.md."""
     stamp = datetime.datetime.now().strftime("%Y%m%d")
     parsed = urllib.parse.urlparse(url)
@@ -44,7 +44,13 @@ def generate_filename(url: str, output_dir: str, mode: str = "active") -> str:
     post_id = re.sub(r'[^a-zA-Z0-9_-]', '', post_id)
 
     mode_part = f"-{mode}" if mode else ""
-    return os.path.join(output_dir, f"{stamp}-x{mode_part}-{username}-{post_id}.md")
+    filename = f"{stamp}-x{mode_part}-{username}-{post_id}.md"
+    if output_dir:
+        return os.path.join(output_dir, filename)
+    else:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        return output_router.route_output(url, filename, "x-text")
 
 
 def check_quality(html: str, soup: BeautifulSoup) -> tuple[str, str]:
@@ -70,7 +76,7 @@ def check_quality(html: str, soup: BeautifulSoup) -> tuple[str, str]:
     return "success", "Quality checks passed"
 
 
-def import_from_clipboard(output_dir: str) -> int:
+def import_from_clipboard(output_dir: str | None = None) -> int:
     """Reads content from clipboard, cleans/formats it, and saves it to outputs/auto/."""
     res = subprocess.run(["pbpaste"], capture_output=True, text=True)
     text = res.stdout.strip()
@@ -99,7 +105,12 @@ def import_from_clipboard(output_dir: str) -> int:
 
     stamp = datetime.datetime.now().strftime("%Y%m%d")
     filename = f"{stamp}-x-clipboard-{username}-{post_id}.md"
-    filepath = os.path.join(output_dir, filename)
+    if output_dir:
+        filepath = os.path.join(output_dir, filename)
+    else:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        filepath = output_router.route_output(url, filename, "x-text")
 
     md_content = f"""---
 source: huashu
@@ -123,6 +134,19 @@ Manually imported from clipboard.
 """
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(md_content)
+
+    try:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        output_router.register_output(
+            output_path=filepath,
+            source=url,
+            explicit_type="x-text",
+            title=f"X Clipboard {username}",
+            status="success"
+        )
+    except Exception as e:
+        print(f"[warn] Failed to register output in manifest/index: {e}")
 
     print(f"\n[ok] Clipboard X content saved to: {filepath}")
     print("\nDone.")
@@ -282,6 +306,19 @@ Error: {content}
 """
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(diagnostic_content)
+
+        try:
+            sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+            import output_router
+            output_router.register_output(
+                output_path=filepath,
+                source=url,
+                explicit_type="x-text",
+                title=f"X Extract Blocked",
+                status="blocked"
+            )
+        except Exception as e:
+            print(f"[warn] Failed to register output in manifest/index: {e}")
         return 1
 
     if status == "failed":
@@ -306,6 +343,19 @@ Quality check failed. Content extracted:
 """
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(diagnostic_content)
+
+        try:
+            sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+            import output_router
+            output_router.register_output(
+                output_path=filepath,
+                source=url,
+                explicit_type="x-text",
+                title=f"X Extract Failed",
+                status="failed"
+            )
+        except Exception as e:
+            print(f"[warn] Failed to register output in manifest/index: {e}")
         return 1
 
     # Success
@@ -333,6 +383,19 @@ Extracted via active Chrome tab using AppleScript.
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(md_content)
 
+    try:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        output_router.register_output(
+            output_path=filepath,
+            source=url,
+            explicit_type="x-text",
+            title=title,
+            status="success"
+        )
+    except Exception as e:
+        print(f"[warn] Failed to register output in manifest/index: {e}")
+
     print(f"\n[ok] Active Chrome X content saved to: {filepath}")
 
     try:
@@ -343,7 +406,7 @@ Extracted via active Chrome tab using AppleScript.
     return 0
 
 
-def extract_x_browser(url: str, output_dir: str) -> int:
+def extract_x_browser(url: str, output_dir: str | None = None) -> int:
     """Deprecated Playwright browser mode. Routes to active Chrome mode."""
     print("Warning: -x-browser mode is deprecated. Using active Chrome mode instead.")
     print(f"Please use plain `huashu \"{url}\"` with the X page already open in logged-in Chrome.")
@@ -360,9 +423,8 @@ def main() -> int:
     args, _ = parser.parse_known_args()
 
     output_dir = args.output_dir
-    if not output_dir:
-        output_dir = os.path.join(REPO_ROOT, "outputs", "auto")
-    os.makedirs(output_dir, exist_ok=True)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     if args.clipboard:
         return import_from_clipboard(output_dir)

@@ -129,7 +129,7 @@ def linearize_conversation(conversation: dict) -> list[dict]:
     return messages
 
 
-def run_export_extraction(json_path: str, conversation_id: str, output_dir: str) -> int:
+def run_export_extraction(json_path: str, conversation_id: str, output_dir: str | None = None) -> int:
     """Runs extraction using the official exported JSON file."""
     convo, err = parse_export(json_path, conversation_id)
     if err:
@@ -141,7 +141,12 @@ def run_export_extraction(json_path: str, conversation_id: str, output_dir: str)
     
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     md_filename = f"{stamp}-chatgpt-{conversation_id}.md"
-    md_filepath = os.path.join(output_dir, md_filename)
+    if output_dir:
+        md_filepath = os.path.join(output_dir, md_filename)
+    else:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        md_filepath = output_router.route_output("chatgpt_export", md_filename, "chatgpt-export")
 
     # Write Markdown content
     write_markdown_file(
@@ -216,12 +221,25 @@ extraction_method: {extraction_method}
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(content)
 
+    try:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        output_router.register_output(
+            output_path=output_path,
+            source=url if url != "none" else "chatgpt_export",
+            explicit_type="chatgpt-export" if url == "none" else "chatgpt",
+            title=title,
+            status=status
+        )
+    except Exception as e:
+        print(f"[warn] Failed to register output in manifest/index: {e}")
+
 
 def run_browser_extraction(
     url: str,
-    output_dir: str,
-    user_data_dir: str,
-    profile_name: str,
+    output_dir: str | None = None,
+    user_data_dir: str = "",
+    profile_name: str = "",
     full_mode: bool = False,
     scroll_timeout: int = 120,
     stable_passes: int = 1,
@@ -246,7 +264,12 @@ def run_browser_extraction(
     
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     md_filename = f"{stamp}-chatgpt-{conversation_id}.md"
-    md_filepath = os.path.join(output_dir, md_filename)
+    if output_dir:
+        md_filepath = os.path.join(output_dir, md_filename)
+    else:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        md_filepath = output_router.route_output(url, md_filename, "chatgpt")
     title = "ChatGPT Conversation"
 
     def save_incremental_state(current_status: str, is_timed_out: bool = False, error_msg: str = None):
@@ -586,8 +609,9 @@ def main() -> int:
     # Determine extraction mode
     is_export = args.chatgpt_export or (args.url_or_file and args.url_or_file.endswith(".json") and args.id)
     
-    output_dir = args.output_dir or os.path.join(REPO_ROOT, "outputs", "auto")
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = args.output_dir
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     if is_export:
         if not args.url_or_file:

@@ -152,7 +152,7 @@ def write_failed_links(filepath: str, rows: list[dict]):
             writer.writerow(r)
 
 
-def crawl_docs(start_url: str, max_pages: int, delay: float, output_dir: str) -> int:
+def crawl_docs(start_url: str, max_pages: int, delay: float, output_dir: str | None = None) -> int:
     """Performs docs crawl, conversions, and file writing."""
     try:
         url_parsed = urllib.parse.urlparse(start_url)
@@ -162,6 +162,10 @@ def crawl_docs(start_url: str, max_pages: int, delay: float, output_dir: str) ->
 
     allowed_netloc = url_parsed.netloc
     allowed_prefix = start_url
+
+    if not output_dir:
+        output_dir = os.path.join(REPO_ROOT, "outputs", "auto", "docs")
+    os.makedirs(output_dir, exist_ok=True)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     slug = generate_slug(start_url)
@@ -310,6 +314,19 @@ def crawl_docs(start_url: str, max_pages: int, delay: float, output_dir: str) ->
     combined_md_path = os.path.join(run_dir, "combined.md")
     write_combined_markdown(combined_md_path, successful_pages)
 
+    try:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        output_router.register_output(
+            output_path=combined_md_path,
+            source=start_url,
+            explicit_type="docs",
+            title=f"Docs: {slug}",
+            status="success"
+        )
+    except Exception as e:
+        print(f"[warn] Failed to register output in manifest/index: {e}")
+
     manifest_csv_path = os.path.join(run_dir, "manifest.csv")
     write_manifest(manifest_csv_path, manifest_rows)
 
@@ -340,10 +357,9 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # Determine output directory
     output_dir = args.output_dir
     if not output_dir:
-        output_dir = os.path.join(REPO_ROOT, "outputs", "auto")
+        output_dir = os.path.join(REPO_ROOT, "outputs", "auto", "docs")
     os.makedirs(output_dir, exist_ok=True)
 
     if not args.force:

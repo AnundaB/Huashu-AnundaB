@@ -90,6 +90,19 @@ status: {status}
     with open(metadata_filepath, "w", encoding="utf-8") as mf:
         mf.write(markdown_content)
 
+    try:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+        output_router.register_output(
+            output_path=md_filepath,
+            source=url,
+            explicit_type="x-video",
+            title=clean_title,
+            status=status
+        )
+    except Exception as e:
+        print(f"[warn] Failed to register output in manifest/index: {e}")
+
 
 def run_download(url: str, output_dir: str | None = None) -> int:
     """Downloads X video metadata and audio, then transcribes locally."""
@@ -106,7 +119,10 @@ def run_download(url: str, output_dir: str | None = None) -> int:
     work_dir = os.path.join(output_dir, out_dir_name)
     os.makedirs(work_dir, exist_ok=True)
 
-    md_filepath = os.path.join(REPO_ROOT, "outputs", "auto", f"{stamp}-x-video-{status_id}.md")
+    filename = f"{stamp}-x-video-{status_id}.md"
+    sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+    import output_router
+    md_filepath = output_router.route_output(url, filename, "x-video")
     metadata_filepath = os.path.join(work_dir, "metadata.md")
 
     python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
