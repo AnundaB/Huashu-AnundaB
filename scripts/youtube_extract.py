@@ -107,7 +107,7 @@ def clean_vtt(vtt_path: str, source: str) -> str:
     return "\n".join(clean_lines).strip()
 
 
-def run_extraction(url: str, output_dir: str | None = None) -> int:
+def run_extraction(url: str, output_dir: str | None = None, output_file: str | None = None) -> int:
     """Executes YouTube caption extraction and saves metadata & transcript to markdown."""
     video_id = extract_video_id(url)
     if not video_id:
@@ -238,7 +238,11 @@ def run_extraction(url: str, output_dir: str | None = None) -> int:
     # Generate filename: YYYYMMDD-HHMMSS-youtube-<video_id>.md
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     md_filename = f"{stamp}-youtube-{video_id}.md"
-    if output_dir:
+
+    if output_file:
+        md_filepath = output_file
+        os.makedirs(os.path.dirname(os.path.abspath(md_filepath)), exist_ok=True)
+    elif output_dir:
         md_filepath = os.path.join(output_dir, md_filename)
     else:
         sys.path.append(os.path.join(REPO_ROOT, "scripts"))
@@ -314,9 +318,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Extract YouTube captions and metadata to Markdown.")
     parser.add_argument("url", help="YouTube URL to extract.")
     parser.add_argument("-o", "--output-dir", default=None, help="Output directory.")
+    parser.add_argument("--output-file", default=None, help="Exact output file path (overrides output-dir logic).")
     args = parser.parse_args()
 
-    return run_extraction(args.url, args.output_dir)
+    return run_extraction(args.url, args.output_dir, args.output_file)
 
 
 if __name__ == "__main__":

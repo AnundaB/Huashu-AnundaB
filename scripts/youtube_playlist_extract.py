@@ -3,6 +3,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -20,6 +21,10 @@ def extract_playlist_id(url: str) -> str | None:
         pass
     return None
 
+def slugify(text: str) -> str:
+    text = re.sub(r'[^\w\s-]', '', text).strip().lower()
+    return re.sub(r'[-\s]+', '-', text)
+
 def run_playlist_extraction(url: str, limit: int | None = None) -> int:
     playlist_id = extract_playlist_id(url)
     if not playlist_id:
@@ -27,8 +32,9 @@ def run_playlist_extraction(url: str, limit: int | None = None) -> int:
         return 1
 
     auto_dir = os.getenv("HUASHU_AUTO_DIR", os.path.join(REPO_ROOT, "outputs", "auto"))
-    output_dir = os.path.join(auto_dir, "youtube", "playlists", playlist_id)
-    os.makedirs(output_dir, exist_ok=True)
+    playlist_dir = os.path.join(auto_dir, "youtube", "playlists", playlist_id)
+    videos_dir = os.path.join(playlist_dir, "videos")
+    os.makedirs(videos_dir, exist_ok=True)
 
     python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
     if not os.path.exists(python_exe):
@@ -70,18 +76,70 @@ def run_playlist_extraction(url: str, limit: int | None = None) -> int:
     print(f"[youtube-playlist] Found {len(videos)} videos. Extracting individual transcripts...")
 
     success_count = 0
+    fail_count = 0
     youtube_extract_script = os.path.join(REPO_ROOT, "scripts", "youtube_extract.py")
-    
+
+    index_md_path = os.path.join(playlist_dir, "playlist_index.md")
+    combined_md_path = os.path.join(playlist_dir, "combined.md")
+
+    index_lines = []
+    combined_content = []
+
+    for i, v in enumerate(videos, 1):
+        v_id = v.get("id")
+        v_title = v.get("title", f"Video {v_id}")
+        v_url = f"https://www.youtube.com/watch?v={v_id}"
+        v_slug = slugify(v_title)
+
+        # 001-<video-id>-<slug>.md
+        padded_i = f"{i:03d}"
+        filename = f"{padded_i}-{v_id}-{v_slug}.md"
+        output_file = os.path.join(videos_dir, filename)
+
+        print(f"[{i}/{len(videos)}] Extracting video {v_id} ({v_title})...")
+
+        ext_cmd = [python_exe, youtube_extract_script, v_url, "--output-file", output_file]
+        ext_res = subprocess.run(ext_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+
+        if ext_res.returncode == 0 and os.path.exists(output_file):
+            success_count += 1
+            status_mark = "✅"
+            rel_path = f"videos/{filename}"
+            index_lines.append(f"{padded_i}. {status_mark} [{v_title}]({rel_path}) - URL: {v_url}")
+
+            # Read transcript content and append to combined.md
+            with open(output_file, "r", encoding="utf-8") as f:
+                content = f.read()
+                # strip frontmatter
+                if content.startswith("source_type:"):
+                    parts = content.split("---------------", 1)
+                    if len(parts) > 1:
+                        content = parts[1].strip()
+                combined_content.append(content)
+        else:
+            fail_count += 1
+            status_mark = "❌"
+            err_msg = ext_res.stderr.strip() or "Unknown error"
+            err_msg = err_msg.replace('\n', ' ')
+            index_lines.append(f"{padded_i}. {status_mark} {v_title} - URL: {v_url} - Error: {err_msg}")
+
+    # Determine status
+    if success_count == len(videos):
+        status = "success"
+    elif success_count == 0:
+        status = "failed"
+    else:
+        status = "partial_success"
+
     # Write playlist_index.md
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    index_md_path = os.path.join(output_dir, "playlist_index.md")
-    
-    lines = [
+    frontmatter = [
         f"source_type: youtube_playlist",
         f"url: {url}",
         f"playlist_id: {playlist_id}",
         f"video_count: {len(videos)}",
-        f"status: success",
+        f"success_count: {success_count}",
+        f"failed_count: {fail_count}",
+        f"status: {status}",
         "---------------",
         f"# YouTube Playlist: {playlist_id}",
         "",
@@ -89,30 +147,23 @@ def run_playlist_extraction(url: str, limit: int | None = None) -> int:
         ""
     ]
 
-    for i, v in enumerate(videos, 1):
-        v_id = v.get("id")
-        v_title = v.get("title", f"Video {v_id}")
-        v_url = f"https://www.youtube.com/watch?v={v_id}"
-        
-        print(f"[{i}/{len(videos)}] Extracting video {v_id} ({v_title})...")
-        
-        # We call the single-video extractor with the clean URL and a specific output directory
-        ext_cmd = [python_exe, youtube_extract_script, v_url, "--output-dir", output_dir]
-        ext_res = subprocess.run(ext_cmd)
-        
-        if ext_res.returncode == 0:
-            success_count += 1
-            status_mark = "✅"
-        else:
-            status_mark = "❌"
-            
-        lines.append(f"{i}. {status_mark} [{v_title}]({v_url})")
-
     with open(index_md_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write("\n".join(frontmatter + index_lines) + "\n")
+
+    # Write combined.md
+    if combined_content:
+        with open(combined_md_path, "w", encoding="utf-8") as f:
+            f.write(f"# YouTube Playlist Combined Transcript: {playlist_id}\n\n")
+            f.write("\n\n---\n\n".join(combined_content))
+            f.write("\n")
 
     print(f"\n[ok] Playlist extraction complete: {success_count}/{len(videos)} videos successful.")
     print(f"Index saved to: {index_md_path}")
+    if combined_content:
+        print(f"Combined saved to: {combined_md_path}")
+
+    if status == "failed":
+        return 1
     return 0
 
 def main() -> int:
