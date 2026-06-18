@@ -2,6 +2,19 @@
 
 # huashu-md-html
 
+> **Note**
+>
+> This repository is a modified fork/adaptation of the original
+> [`alchaincyf/huashu-md-html`](https://github.com/alchaincyf/huashu-md-html)
+> project by Huashu (花叔), originally released under the MIT License.
+>
+> This version contains local workflow extensions and experiments by Anunda,
+> including YouTube playlist transcript extraction, ChatGPT/X extraction,
+> semantic indexing, and auto-output organization.
+>
+> This repository is not the official Huashu distribution.
+
+
 > *「md 是源代码，html / docx 是产物。」*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
