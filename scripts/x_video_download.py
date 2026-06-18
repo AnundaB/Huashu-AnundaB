@@ -91,9 +91,7 @@ status: {status}
         mf.write(markdown_content)
 
     try:
-        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
-        import output_router
-        output_router.register_output(
+        _register_output_helper(
             output_path=md_filepath,
             source=url,
             explicit_type="x-video",
@@ -103,8 +101,24 @@ status: {status}
     except Exception as e:
         print(f"[warn] Failed to register output in manifest/index: {e}")
 
+def _route_output_helper(url: str, filename: str, type_name: str) -> str:
+    sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+    import output_router
+    return output_router.route_output(url, filename, type_name)
 
-def run_download(url: str, output_dir: str | None = None) -> int:
+def _register_output_helper(output_path: str, source: str, explicit_type: str, title: str, status: str):
+    sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+    import output_router
+    output_router.register_output(
+        output_path=output_path,
+        source=source,
+        explicit_type=explicit_type,
+        title=title,
+        status=status
+    )
+
+
+def run_download(url: str, output_dir: str | None = None, model: str = "tiny", transcript_timeout: int = 0, language: str | None = None, engine: str | None = None) -> int:
     """Downloads X video metadata and audio, then transcribes locally."""
     status_id = extract_status_id(url)
     if not status_id:
@@ -120,9 +134,7 @@ def run_download(url: str, output_dir: str | None = None) -> int:
     os.makedirs(work_dir, exist_ok=True)
 
     filename = f"{stamp}-x-video-{status_id}.md"
-    sys.path.append(os.path.join(REPO_ROOT, "scripts"))
-    import output_router
-    md_filepath = output_router.route_output(url, filename, "x-video")
+    md_filepath = _route_output_helper(url, filename, "x-video")
     metadata_filepath = os.path.join(work_dir, "metadata.md")
 
     python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
@@ -319,82 +331,172 @@ def run_download(url: str, output_dir: str | None = None) -> int:
         return 0
 
     # Step 5: Perform Transcription
-    transcribed_text = None
-    engine_used = "none"
+    print(f"[x_video] audio_wav_path: {audio_wav_path}")
+    print(f"[x_video] model: {model}, engine: {engine or 'auto'}, timeout: {transcript_timeout or 'none'}")
 
-    # 1. Try faster-whisper
-    print("[x_video] Trying transcription with faster-whisper...")
-    faster_cmd = [
-        python_exe, "-c",
-        "from faster_whisper import WhisperModel; import sys; "
-        "model = WhisperModel('base', device='cpu', compute_type='int8'); "
-        "segments, info = model.transcribe(sys.argv[1], beam_size=5); "
-        "print(' '.join([s.text for s in segments]).strip())",
-        audio_wav_path
-    ]
-    try:
-        res = subprocess.run(faster_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", timeout=180)
-        if res.returncode == 0 and res.stdout.strip():
-            transcribed_text = res.stdout.strip()
-            engine_used = "faster-whisper"
-    except subprocess.TimeoutExpired:
-        print("[x_video] faster-whisper transcription timed out.")
-    except Exception:
-        pass
+    def get_audio_duration(audio_path: str) -> float:
+        cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", audio_path]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+            if res.returncode == 0 and res.stdout.strip():
+                return float(res.stdout.strip())
+        except Exception:
+            pass
+        return 0.0
 
-    # 2. Try openai-whisper
-    if not transcribed_text:
-        print("[x_video] Trying transcription with openai-whisper...")
-        openai_cmd = [
-            python_exe, "-c",
-            "import whisper; import sys; "
-            "model = whisper.load_model('base'); "
-            "result = model.transcribe(sys.argv[1], fp16=False); "
-            "print((result.get('text') or '').strip())",
-            audio_wav_path
+    actual_duration = get_audio_duration(audio_wav_path)
+    print(f"[x_video] Audio duration: {actual_duration:.2f} seconds")
+
+    chunks = []
+    # If duration > 20 mins, chunk into 10 mins
+    if actual_duration > 1200:
+        print("[x_video] Audio is longer than 20 minutes. Chunking into 10-minute segments...")
+        chunks_dir = os.path.join(work_dir, "chunks")
+        os.makedirs(chunks_dir, exist_ok=True)
+        chunk_len = 600
+        cmd_chunk = [
+            "ffmpeg", "-y", "-i", audio_wav_path,
+            "-f", "segment", "-segment_time", str(chunk_len),
+            "-c", "copy",
+            os.path.join(chunks_dir, "chunk-%03d.wav")
         ]
         try:
-            res = subprocess.run(openai_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", timeout=180)
-            if res.returncode == 0 and res.stdout.strip():
-                transcribed_text = res.stdout.strip()
-                engine_used = "openai-whisper"
-        except subprocess.TimeoutExpired:
-            print("[x_video] openai-whisper transcription timed out.")
-        except Exception:
-            pass
+            subprocess.run(cmd_chunk, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+            chunks = sorted([os.path.join(chunks_dir, f) for f in os.listdir(chunks_dir) if f.startswith("chunk-") and f.endswith(".wav")])
+        except Exception as e:
+            print(f"[warn] Failed to chunk audio: {e}")
+            chunks = [audio_wav_path]
+    else:
+        chunks = [audio_wav_path]
 
-    # 3. Try whisper CLI
-    if not transcribed_text and shutil.which("whisper"):
-        print("[x_video] Trying transcription with whisper CLI...")
-        cli_cmd = ["whisper", audio_wav_path, "--model", "base", "--output_dir", work_dir, "--output_format", "txt"]
-        try:
-            res = subprocess.run(cli_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
-            txt_path = os.path.join(work_dir, "audio.txt")
-            if os.path.exists(txt_path):
-                with open(txt_path, "r", encoding="utf-8") as f:
-                    transcribed_text = f.read().strip()
-                engine_used = "whisper-cli"
-        except subprocess.TimeoutExpired:
-            print("[x_video] whisper CLI transcription timed out.")
-        except Exception:
-            pass
+    transcribed_text = ""
+    engine_used = "none"
+    transcription_failed = False
+
+    lang_arg = f", language='{language}'" if language else ""
+    cli_lang_arg = ["--language", language] if language else []
+
+    active_timeout = transcript_timeout if transcript_timeout > 0 else None
+
+    # Determine engines to try
+    engines_to_try = ["faster-whisper", "openai-whisper", "whisper-cli"]
+    if engine:
+        engines_to_try = [engine]
+
+    for chunk_idx, chunk_path in enumerate(chunks):
+        if len(chunks) > 1:
+            print(f"[x_video] Transcribing chunk {chunk_idx + 1}/{len(chunks)}: {chunk_path}")
+
+        chunk_text = None
+        chunk_engine_used = "none"
+
+        for eng in engines_to_try:
+            if eng == "faster-whisper":
+                print(f"[x_video] Trying transcription with faster-whisper on {chunk_path}...")
+                faster_cmd = [
+                    python_exe, "-c",
+                    f"from faster_whisper import WhisperModel; import sys; "
+                    f"model = WhisperModel('{model}', device='cpu', compute_type='int8'); "
+                    f"segments, info = model.transcribe(sys.argv[1], beam_size=5{lang_arg}); "
+                    f"print(' '.join([s.text for s in segments]).strip())",
+                    chunk_path
+                ]
+                try:
+                    res = subprocess.run(faster_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", timeout=active_timeout)
+                    if res.returncode == 0:
+                        chunk_text = res.stdout.strip()
+                        chunk_engine_used = "faster-whisper"
+                        break
+                    else:
+                        if "ModuleNotFoundError" in res.stderr:
+                            print("[warn] faster-whisper is not installed.")
+                        else:
+                            print(f"[warn] faster-whisper failed: {res.stderr}")
+                except subprocess.TimeoutExpired:
+                    print(f"[warn] faster-whisper transcription timed out ({active_timeout}s).")
+                except Exception as e:
+                    print(f"[warn] faster-whisper exception: {e}")
+
+            elif eng == "openai-whisper":
+                print(f"[x_video] Trying transcription with openai-whisper on {chunk_path}...")
+                openai_cmd = [
+                    python_exe, "-c",
+                    f"import whisper; import sys; "
+                    f"model = whisper.load_model('{model}'); "
+                    f"result = model.transcribe(sys.argv[1], fp16=False{lang_arg}); "
+                    f"print((result.get('text') or '').strip())",
+                    chunk_path
+                ]
+                try:
+                    res = subprocess.run(openai_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", timeout=active_timeout)
+                    if res.returncode == 0:
+                        chunk_text = res.stdout.strip()
+                        chunk_engine_used = "openai-whisper"
+                        break
+                    else:
+                        if "ModuleNotFoundError" in res.stderr:
+                            print("[warn] openai-whisper is not installed.")
+                        else:
+                            print(f"[warn] openai-whisper failed: {res.stderr}")
+                except subprocess.TimeoutExpired:
+                    print(f"[warn] openai-whisper transcription timed out ({active_timeout}s).")
+                except Exception as e:
+                    print(f"[warn] openai-whisper exception: {e}")
+
+            elif eng == "whisper-cli":
+                if not shutil.which("whisper"):
+                    print("[warn] whisper CLI is not installed.")
+                    continue
+                print(f"[x_video] Trying transcription with whisper CLI on {chunk_path}...")
+                cli_cmd = ["whisper", chunk_path, "--model", model, "--output_dir", work_dir, "--output_format", "txt", "--fp16", "False"] + cli_lang_arg
+                try:
+                    res = subprocess.run(cli_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=active_timeout)
+                    chunk_basename = os.path.splitext(os.path.basename(chunk_path))[0]
+                    txt_path = os.path.join(work_dir, f"{chunk_basename}.txt")
+                    if os.path.exists(txt_path):
+                        with open(txt_path, "r", encoding="utf-8") as f:
+                            chunk_text = f.read().strip()
+                        chunk_engine_used = "whisper-cli"
+                        break
+                    else:
+                        print(f"[warn] whisper CLI failed to produce output. stderr: {res.stderr.decode('utf-8', errors='ignore')}")
+                except subprocess.TimeoutExpired:
+                    print(f"[warn] whisper CLI transcription timed out ({active_timeout}s).")
+                except Exception as e:
+                    print(f"[warn] whisper CLI exception: {e}")
+
+        if chunk_text is not None:
+            transcribed_text += chunk_text + " "
+            engine_used = chunk_engine_used
+            # Save partial progress
+            with open(os.path.join(work_dir, "partial_transcript.txt"), "a", encoding="utf-8") as f:
+                f.write(chunk_text + "\n")
+        else:
+            transcription_failed = True
+            print(f"[error] Transcription failed for chunk {chunk_path}")
+            break
+
+    transcribed_text = transcribed_text.strip()
 
     # Step 6: Finalize Markdown
-    if transcribed_text:
+    final_status = "metadata_only"
+    if transcribed_text and not transcription_failed:
         print(f"[x_video] Transcription successful using {engine_used}.")
+        final_status = "success"
         write_markdown(
             url=url, status_id=status_id, author=author, title=title, duration=str(duration),
             work_dir=work_dir, audio_file=audio_wav_path, transcript_source="audio", transcript_engine=engine_used,
-            status="success", description=description, transcript=transcribed_text,
+            status=final_status, description=description, transcript=transcribed_text,
             notes_list=[], md_filepath=md_filepath, metadata_filepath=metadata_filepath
         )
     else:
-        print("[warn] All transcription engines failed or timed out.")
+        print("[warn] Transcription failed or timed out.")
+        final_status = "transcript_failed"
         write_markdown(
             url=url, status_id=status_id, author=author, title=title, duration=str(duration),
             work_dir=work_dir, audio_file=audio_wav_path, transcript_source="none", transcript_engine="none",
-            status="metadata_only", description=description, transcript="",
-            notes_list=["Transcript unavailable: Speech-to-text transcription failed or timed out."],
+            status=final_status, description=description, transcript=transcribed_text,
+            notes_list=["Transcript failed: Speech-to-text transcription encountered an error or timed out."],
             md_filepath=md_filepath, metadata_filepath=metadata_filepath
         )
 
@@ -403,7 +505,7 @@ def run_download(url: str, output_dir: str | None = None) -> int:
     print(f"saved directory: {work_dir}")
     print(f"saved video path: none")
     print(f"metadata path: {metadata_filepath}")
-    print(f"status: {'success' if transcribed_text else 'metadata_only'}")
+    print(f"status: {final_status}")
 
     return 0
 
@@ -412,9 +514,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Extract X/Twitter video details and transcribe to Markdown.")
     parser.add_argument("url", help="X/Twitter status/video URL.")
     parser.add_argument("-o", "--output-dir", default=None, help="Output directory.")
+    parser.add_argument("--model", default="tiny", help="Whisper model.")
+    parser.add_argument("--transcript-timeout", type=int, default=0, help="Timeout in seconds for transcription. 0 means no timeout.")
+    parser.add_argument("--language", default=None, help="Language code (e.g., en).")
+    parser.add_argument("--engine", default=None, choices=["auto", "faster-whisper", "openai-whisper", "whisper-cli"], help="Transcription engine.")
     args = parser.parse_args()
 
-    return run_download(args.url, args.output_dir)
+    engine = args.engine if args.engine != "auto" else None
+
+    return run_download(
+        url=args.url,
+        output_dir=args.output_dir,
+        model=args.model,
+        transcript_timeout=args.transcript_timeout,
+        language=args.language,
+        engine=engine
+    )
 
 
 if __name__ == "__main__":
