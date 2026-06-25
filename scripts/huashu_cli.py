@@ -402,6 +402,7 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -latest                             Show directories and details of the latest runs.
   python3 scripts/huashu_cli.py -docs <url>                         Force docs crawl of a site.
   python3 scripts/huashu_cli.py -page <url>                         Force single-page web conversion.
+  python3 scripts/huashu_cli.py -ocr <file>                         Optional OCR for images and scanned PDFs.
   python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
   python3 scripts/huashu_cli.py -x-browser <url>                    Force browser-assisted X/Twitter post extraction.
   python3 scripts/huashu_cli.py -clipboard                          Import X/Twitter content from clipboard.
@@ -600,6 +601,18 @@ def main() -> int:
         python_exe = sys.executable or "python3"
         organize_script = os.path.join(REPO_ROOT, "scripts", "organize_auto_outputs.py")
         cmd = [python_exe, organize_script]
+        cmd.extend(sys.argv[2:])
+        res = subprocess.run(cmd)
+        return res.returncode
+
+    if arg1 in ("-ocr", "--ocr", "ocr"):
+        if len(sys.argv) < 3:
+            print("[error] Please specify an image or PDF file.")
+            print(f"Usage: python3 scripts/huashu_cli.py {sys.argv[1]} <file> [--engine paddleocr]")
+            return 1
+        python_exe = sys.executable or "python3"
+        ocr_script = os.path.join(REPO_ROOT, "scripts", "ocr_extract.py")
+        cmd = [python_exe, ocr_script]
         cmd.extend(sys.argv[2:])
         res = subprocess.run(cmd)
         return res.returncode

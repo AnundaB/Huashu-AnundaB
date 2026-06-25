@@ -101,12 +101,28 @@ huashu -x "https://x.com/..."
 # ChatGPT shared conversation
 huashu -chatgpt "https://chatgpt.com/share/..."
 
+# Optional OCR for an image or scanned PDF
+huashu -ocr path/to/file.png
+
 # Organize outputs (preview)
 huashu -organize-auto --dry-run
 
 # Organize outputs (apply)
 huashu -organize-auto --apply
 ```
+
+## Optional OCR
+
+Optional OCR can improve extraction for screenshots, scanned PDFs, and image-heavy documents. OCR support is dependency-heavy, so Huashu keeps it optional and fallback-oriented.
+
+```bash
+huashu -ocr path/to/image-or-pdf
+huashu -ocr path/to/image-or-pdf --engine paddleocr
+```
+
+The initial OCR adapter uses PaddleOCR when it is installed in your environment. If it is missing, Huashu prints install guidance instead of failing with a stack trace. PDF OCR also needs a local page renderer such as PyMuPDF.
+
+OCR accuracy depends on the source image quality, language, layout complexity, and installed OCR models. Huashu does not claim perfect OCR output.
 
 ## Output Structure
 
