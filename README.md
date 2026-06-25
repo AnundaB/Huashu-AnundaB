@@ -1,44 +1,376 @@
 # Huashu-AnundaB
 
-One command to turn scattered online research into organized local Markdown knowledge.
+> **Turn Anything Into Markdown.**
 
-> **Note:** This repository is a modified fork/adaptation of [alchaincyf/huashu-md-html](https://github.com/alchaincyf/huashu-md-html) by Huashu (花叔), originally released under the MIT License. This is not the official Huashu distribution. Please see [PROVENANCE.md](PROVENANCE.md), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and [LICENSE](LICENSE) for details.
+Huashu-AnundaB is a local-first knowledge extraction CLI that turns websites, YouTube videos, YouTube playlists, GitHub repositories, PDFs, images, ChatGPT conversations, X/Twitter posts, and local files into clean, organized, searchable Markdown.
 
-## The Problem
+```bash
+huashu "<anything>"
+```
 
-Online research is often scattered across multiple platforms:
+Everything becomes Markdown.  
+Everything stays local.
+
+> **Note**
+>
+> This repository is a modified fork/adaptation of [`alchaincyf/huashu-md-html`](https://github.com/alchaincyf/huashu-md-html) by Huashu (花叔), originally released under the MIT License.
+>
+> This is not the official Huashu distribution.
+>
+> Please see [`PROVENANCE.md`](PROVENANCE.md), [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and [`LICENSE`](LICENSE) for licensing and attribution details.
+
+---
+
+## Why Huashu-AnundaB?
+
+Knowledge is scattered everywhere:
+
 - YouTube videos and playlists
-- ChatGPT shared conversations
-- X/Twitter posts
-- Web pages
-- Documentation
-- Local notes
+- GitHub repositories
+- ChatGPT conversations
+- X/Twitter posts and videos
+- Web pages and documentation
+- PDFs and scanned documents
+- Screenshots and image-heavy files
+- Research papers
+- Local notes and files
 
-Keeping track of this information in a usable, unified format is difficult and time-consuming.
+Most of this knowledge gets lost inside browser tabs, bookmarks, screenshots, chat history, and random folders.
 
-## The Solution
+Huashu-AnundaB turns that scattered information into a local Markdown knowledge base that you can search, organize, study, and feed into AI workflows.
 
-Huashu-AnundaB turns your scattered online research into clean, organized local Markdown files with a single command. It acts as a bridge between the web and your local knowledge base.
+---
 
-## Features
+## What Huashu Can Extract
 
-- Smart URL capture with `huashu "<url>"`
-- YouTube video transcript extraction
-- YouTube playlist transcript extraction
-  - Creates `playlist_index.md`
-  - Creates `combined.md`
-  - Creates per-video `videos/*.md`
-- ChatGPT share/conversation extraction
-- X/Twitter text extraction
-- X video transcript extraction
-- Categorized auto output routing
-- Safe output organization with `huashu -organize-auto --dry-run` and `--apply`
-- Local semantic index and benchmark tooling
-- Markdown/HTML/DOCX inherited conversion scripts where applicable
+| Source | Output |
+|---|---|
+| Websites | Clean Markdown |
+| Documentation pages | Markdown notes |
+| YouTube videos | Transcript Markdown |
+| YouTube playlists | `playlist_index.md`, `combined.md`, per-video Markdown |
+| GitHub repositories | Full repo snapshot, file tree, combined source, architecture, dependency graph, semantic index |
+| ChatGPT shared conversations | Markdown conversation archive |
+| X/Twitter posts | Markdown |
+| X/Twitter videos | Metadata + audio transcript when possible |
+| PDFs and scanned documents | OCR Markdown |
+| Images and screenshots | OCR Markdown |
+| Local files | Markdown where supported |
+
+---
+
+## Core Idea
+
+```text
+Anything
+  ↓
+Markdown
+  ↓
+Organized local knowledge base
+  ↓
+Semantic search
+  ↓
+AI-ready context
+```
+
+Huashu is designed for people who want to collect knowledge from the internet and turn it into durable local files.
+
+Markdown is simple, portable, searchable, git-friendly, and easy to use with AI tools.
+
+---
+
+## Quickstart
+
+### Capture a web page
+
+```bash
+huashu "https://example.com"
+```
+
+### Extract a YouTube video transcript
+
+```bash
+huashu -youtube "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+### Extract a YouTube playlist
+
+```bash
+huashu -youtube-playlist "https://youtube.com/playlist?list=PLAYLIST_ID" --limit 5
+```
+
+This creates:
+
+```text
+playlist_index.md
+combined.md
+videos/
+  001-video-title.md
+  002-video-title.md
+```
+
+### Extract a GitHub repository
+
+```bash
+huashu -repo "https://github.com/owner/repo"
+```
+
+This creates a local repository knowledge base:
+
+```text
+repository_index.md
+combined.md
+tree.txt
+repo_metadata.md
+architecture.md
+dependency_graph.md
+imports.csv
+semantic_index/
+files/
+```
+
+### Search an extracted repository
+
+```bash
+huashu -repo-search "risk management"
+```
+
+Search results include:
+
+- score
+- repository
+- file path
+- chunk preview
+
+### Extract OCR from a scanned PDF or image
+
+```bash
+huashu -ocr scanned_document.pdf
+```
+
+OCR support is optional and dependency-heavy. Huashu keeps OCR fallback-oriented so normal installs stay lightweight.
+
+### Extract a ChatGPT shared conversation
+
+```bash
+huashu -chatgpt "https://chatgpt.com/share/..."
+```
+
+### Extract an X/Twitter post
+
+```bash
+huashu -x "https://x.com/..."
+```
+
+### Extract an X/Twitter video transcript
+
+```bash
+huashu "https://x.com/user/status/123/video/1"
+```
+
+### Organize outputs safely
+
+Preview first:
+
+```bash
+huashu -organize-auto --dry-run
+```
+
+Apply:
+
+```bash
+huashu -organize-auto --apply
+```
+
+---
+
+## GitHub Repository Intelligence
+
+Huashu-AnundaB can turn a GitHub repository into a local code knowledge base.
+
+```bash
+huashu -repo "https://github.com/YiJia-Xiao/TradingAgents"
+```
+
+It does not just scrape the rendered GitHub page.
+
+It recursively enumerates the repository tree, downloads text-based source files, preserves folder structure, and generates Markdown intelligence files.
+
+### Generated files
+
+```text
+outputs/auto/github/<repo>/
+  repository_index.md
+  combined.md
+  tree.txt
+  repo_metadata.md
+  architecture.md
+  dependency_graph.md
+  imports.csv
+  semantic_index/
+    chunks.jsonl
+    vectors.npy
+    ids.npy
+    id_map.jsonl
+    index_manifest.json
+  files/
+    <original repo file structure>
+```
+
+### Repository analysis includes
+
+- full file tree
+- file counts by extension
+- largest files
+- probable entrypoints
+- test directories
+- config files
+- dependency files
+- documentation files
+- top-level directory descriptions
+- deterministic architecture overview
+- Python dependency graph via `ast`
+- local semantic search index
+
+### Limits and safety
+
+Huashu skips binary files by default and supports limits for large repositories:
+
+```bash
+huashu -repo "https://github.com/owner/repo" --max-files 500 --max-file-size-kb 512
+```
+
+No GitHub token is required for normal public repositories.
+
+For heavy usage, future versions may support optional `GITHUB_TOKEN` for higher GitHub API limits.
+
+---
+
+## OCR Extraction
+
+Huashu can extract text from images, screenshots, scanned PDFs, and image-heavy documents.
+
+```bash
+huashu -ocr path/to/file.png
+huashu -ocr path/to/scanned.pdf
+```
+
+OCR output includes Markdown metadata:
+
+```yaml
+source: path/to/file
+engine: paddleocr
+page_count: 3
+status: success
+confidence: available_when_supported
+warnings: []
+```
+
+OCR is optional.
+
+If OCR dependencies are missing, Huashu prints install guidance instead of crashing.
+
+---
+
+## YouTube Playlist Extraction
+
+Huashu can convert playlists into structured Markdown knowledge bases.
+
+```bash
+huashu -youtube-playlist "https://youtube.com/playlist?list=PLAYLIST_ID" --limit 10
+```
+
+Output:
+
+```text
+outputs/auto/youtube/playlists/<playlist-id>/
+  playlist_index.md
+  combined.md
+  videos/
+    001-title.md
+    002-title.md
+```
+
+This is useful for:
+
+- courses
+- tutorials
+- lectures
+- podcasts
+- research playlists
+- study plans
+
+---
+
+## X/Twitter Video Transcription
+
+Huashu can process X/Twitter video URLs.
+
+It fetches metadata, downloads audio when possible, converts audio locally, and attempts speech-to-text transcription.
+
+Long audio is handled with chunking and safer transcript status reporting.
+
+Possible statuses:
+
+```text
+success
+metadata_only
+transcript_failed
+```
+
+---
+
+## Local Semantic Search
+
+Huashu includes local semantic indexing for extracted knowledge.
+
+Current embedding is lightweight and local by default.
+
+Repository semantic search:
+
+```bash
+huashu -repo-search "portfolio optimization"
+huashu -repo-search "risk kernel"
+huashu -repo-search "IBKR"
+```
+
+The goal is to make your extracted Markdown useful not only as files, but as a searchable local memory system.
+
+---
+
+## Output Structure
+
+Huashu organizes extracted files under:
+
+```text
+outputs/auto/
+  web/
+  docs/
+  youtube/
+    playlists/
+  x/
+    text/
+    video/
+  chatgpt/
+  github/
+  research/
+  ocr/
+  misc/
+```
+
+Generated media/cache files may also appear under:
+
+```text
+outputs/media/
+```
+
+Do not commit personal outputs, transcripts, media files, cookies, tokens, or `.env` files.
+
+---
 
 ## Installation
 
-### macOS/Linux
+### macOS / Linux
 
 ```bash
 git clone https://github.com/AnundaB/Huashu-AnundaB.git
@@ -55,7 +387,7 @@ python -m pytest
 huashu -latest
 ```
 
-### Windows (via WSL2)
+### Windows via WSL2
 
 Open PowerShell as Administrator:
 
@@ -63,7 +395,7 @@ Open PowerShell as Administrator:
 wsl --install -d Ubuntu
 ```
 
-Then, in your Ubuntu terminal:
+Then open Ubuntu:
 
 ```bash
 sudo apt update
@@ -83,105 +415,128 @@ python -m pytest
 huashu -latest
 ```
 
-## Quickstart
+---
+
+## Optional Dependencies
+
+Some features require extra system or Python dependencies.
+
+### FFmpeg
+
+Needed for video/audio processing.
+
+macOS:
 
 ```bash
-# General web page capture
-huashu "https://example.com"
-
-# YouTube video
-huashu -youtube "https://www.youtube.com/watch?v=VIDEO_ID"
-
-# YouTube playlist (limit to 5 videos)
-huashu -youtube-playlist "https://youtube.com/playlist?list=PLAYLIST_ID" --limit 5
-
-# X/Twitter post
-huashu -x "https://x.com/..."
-
-# ChatGPT shared conversation
-huashu -chatgpt "https://chatgpt.com/share/..."
-
-# GitHub repository source extraction
-huashu -repo "https://github.com/owner/repo" --max-files 500 --max-file-size-kb 512
-
-# Search latest extracted repository
-huashu -repo-search "risk kernel"
-
-# Optional OCR for an image or scanned PDF
-huashu -ocr path/to/file.png
-
-# Organize outputs (preview)
-huashu -organize-auto --dry-run
-
-# Organize outputs (apply)
-huashu -organize-auto --apply
+brew install ffmpeg
 ```
 
-## Optional OCR
-
-Optional OCR can improve extraction for screenshots, scanned PDFs, and image-heavy documents. OCR support is dependency-heavy, so Huashu keeps it optional and fallback-oriented.
+Ubuntu:
 
 ```bash
-huashu -ocr path/to/image-or-pdf
-huashu -ocr path/to/image-or-pdf --engine paddleocr
+sudo apt install -y ffmpeg
 ```
 
-The initial OCR adapter uses PaddleOCR when it is installed in your environment. If it is missing, Huashu prints install guidance instead of failing with a stack trace. PDF OCR also needs a local page renderer such as PyMuPDF.
+### OCR
 
-OCR accuracy depends on the source image quality, language, layout complexity, and installed OCR models. Huashu does not claim perfect OCR output.
+OCR is optional.
 
-## Output Structure
+Depending on the OCR path, you may need:
 
-When using the organization features, your outputs are routed into structured directories:
-
-```text
-outputs/auto/
-  web/
-  docs/
-  youtube/
-    playlists/
-      <playlist-id>/
-        playlist_index.md
-        combined.md
-        videos/
-          001-<video-id>-<slug>.md
-  x/
-    text/
-    video/
-  chatgpt/
-  github/
-    <timestamp>-<owner>-<repo>/
-      repository_index.md
-      architecture.md
-      dependency_graph.md
-      imports.csv
-      combined.md
-      tree.txt
-      repo_metadata.md
-      semantic_index/
-      files/
-  research/
-  misc/
+```bash
+pip install paddleocr
+pip install pymupdf
 ```
 
-## Privacy and Safety
+Huashu should continue working without these dependencies; OCR commands will print guidance if something is missing.
 
-- **Local First**: Outputs are saved locally by default.
-- **Git Ignore**: Do not commit `outputs/`, `.venv/`, `.env`, secrets, cookies, or personal transcripts. These are ignored by default.
-- **Respectful Scraping**: The tool should not bypass paywalls, login screens, or restricted content.
-- **YouTube Transcripts**: YouTube mode extracts captions/transcripts; it should not download full videos by default.
+---
 
 ## Development
 
-To run tests and check for issues:
+Run tests:
 
 ```bash
 python -m pytest
+```
+
+Check whitespace / patch quality:
+
+```bash
 git diff --check
 ```
 
+Show current changes:
+
+```bash
+git status --short
+git diff --stat
+```
+
+---
+
+## Safety and Privacy
+
+Huashu is local-first.
+
+- Outputs are saved locally by default.
+- Do not commit `outputs/`, `.venv/`, `.env`, cookies, secrets, private transcripts, or personal files.
+- The tool should not bypass paywalls, login screens, private repositories, or restricted content.
+- YouTube mode extracts captions/transcripts; it does not download full videos by default.
+- GitHub repository mode is designed for public repositories unless you explicitly extend it later.
+
+---
+
+## What Huashu-AnundaB Is Not
+
+Huashu-AnundaB is not:
+
+- the official Huashu distribution
+- a paywall bypass tool
+- a private content scraper
+- a full video downloader
+- a replacement for legal/compliance review
+- a perfect OCR or perfect semantic search system
+
+It is a local knowledge extraction tool focused on turning useful public or user-owned information into Markdown.
+
+---
+
+## Roadmap
+
+Planned or possible next steps:
+
+- automatic OCR fallback for scanned PDFs
+- better repository symbol extraction
+- cross-repository search
+- repository Q&A
+- optional GitHub token support
+- better table/layout reconstruction for OCR
+- stronger semantic indexing
+- local knowledge graph generation
+
+---
+
 ## License and Attribution
 
-- **Original Project**: [Huashu (花叔)](https://github.com/alchaincyf/huashu-md-html), released under the MIT License.
-- **This Adaptation**: AnundaB modifications are under the MIT License unless otherwise stated.
-- Please see [`PROVENANCE.md`](PROVENANCE.md) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for full licensing and attribution details.
+Original project:
+
+- [`alchaincyf/huashu-md-html`](https://github.com/alchaincyf/huashu-md-html) by Huashu (花叔)
+- originally released under the MIT License
+
+This adaptation:
+
+- Huashu-AnundaB modifications by AnundaB
+- released under the MIT License unless otherwise stated
+
+See:
+
+- [`LICENSE`](LICENSE)
+- [`PROVENANCE.md`](PROVENANCE.md)
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+
+---
+
+## One Sentence
+
+Huashu-AnundaB turns anything into Markdown so your scattered knowledge becomes a searchable local knowledge base.
