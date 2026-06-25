@@ -28,13 +28,11 @@ PDF_SUFFIXES = {".pdf"}
 OCR_INSTALL_HELP = """\
 OCR dependencies are missing.
 
-If you installed Huashu with the lightweight/core install, run:
+To install optional OCR support, run:
 
   python -m pip install -r requirements-ocr.txt
 
-For the full recommended install, run:
-
-  python -m pip install -r requirements.txt
+The default lightweight install intentionally does not include OCR.
 
 Then verify:
 
@@ -45,13 +43,11 @@ PADDLEOCR_INSTALL_HELP = OCR_INSTALL_HELP
 PYMUPDF_INSTALL_HELP = """\
 OCR dependencies are missing.
 
-If you installed Huashu with the lightweight/core install, run:
+To install optional OCR support, run:
 
   python -m pip install -r requirements-ocr.txt
 
-For the full recommended install, run:
-
-  python -m pip install -r requirements.txt
+The default lightweight install intentionally does not include OCR.
 
 Then verify:
 
@@ -114,6 +110,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="DPI used when rendering PDF pages before OCR.",
     )
     parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="Maximum PDF pages to OCR. Useful for testing large PDFs first.",
+    )
+    parser.add_argument(
         "--quiet",
         action="store_true",
         help="Suppress non-error progress output.",
@@ -147,7 +149,7 @@ def normalize_source_path(source: str) -> Path:
     return Path(source).expanduser().resolve()
 
 
-def render_pdf_pages(pdf_path: Path, dpi: int) -> tuple[list[Path], tempfile.TemporaryDirectory[str]]:
+def render_pdf_pages(pdf_path: Path, dpi: int, max_pages: int | None = None) -> tuple[list[Path], tempfile.TemporaryDirectory[str]]:
     try:
         fitz = importlib.import_module("fitz")
     except ImportError as exc:
@@ -159,6 +161,8 @@ def render_pdf_pages(pdf_path: Path, dpi: int) -> tuple[list[Path], tempfile.Tem
         doc = fitz.open(str(pdf_path))
         matrix = fitz.Matrix(dpi / 72, dpi / 72)
         for index, page in enumerate(doc, start=1):
+            if max_pages is not None and index > max_pages:
+                break
             out_path = Path(tmp.name) / f"page_{index:04d}.png"
             page.get_pixmap(matrix=matrix).save(str(out_path))
             page_paths.append(out_path)
@@ -261,7 +265,7 @@ def normalize_ocr_result(raw: Any) -> tuple[str, float | None]:
     return "\n".join(lines), mean(scores) if scores else None
 
 
-def extract_with_paddleocr(source_path: Path, lang: str, pdf_dpi: int) -> OcrResult:
+def extract_with_paddleocr(source_path: Path, lang: str, pdf_dpi: int, max_pages: int | None = None) -> OcrResult:
     suffix = source_path.suffix.lower()
     ocr = build_paddleocr(lang)
     result = OcrResult(source_path=source_path, engine="paddleocr", status="success")
@@ -278,7 +282,7 @@ def extract_with_paddleocr(source_path: Path, lang: str, pdf_dpi: int) -> OcrRes
     if suffix in PDF_SUFFIXES:
         page_dir: tempfile.TemporaryDirectory[str] | None = None
         try:
-            page_paths, page_dir = render_pdf_pages(source_path, pdf_dpi)
+            page_paths, page_dir = render_pdf_pages(source_path, pdf_dpi, max_pages=max_pages)
             if not page_paths:
                 result.status = "empty"
                 result.warnings.append("PDF rendered with zero pages.")
@@ -371,7 +375,7 @@ def write_and_register(markdown: str, output_path: Path, source_path: Path, stat
         print(f"[warn] Failed to register OCR output in manifest/index: {exc}", file=sys.stderr)
 
 
-def run(source: str, engine: str, output: str | None, lang: str, pdf_dpi: int) -> Path:
+def run(source: str, engine: str, output: str | None, lang: str, pdf_dpi: int, max_pages: int | None = None) -> Path:
     source_path = normalize_source_path(source)
     if not source_path.exists():
         raise FileNotFoundError(f"Input file not found: {source_path}")
@@ -381,7 +385,7 @@ def run(source: str, engine: str, output: str | None, lang: str, pdf_dpi: int) -
     if engine != "paddleocr":
         raise ValueError(f"Unsupported OCR engine: {engine}")
 
-    result = extract_with_paddleocr(source_path, lang=lang, pdf_dpi=pdf_dpi)
+    result = extract_with_paddleocr(source_path, lang=lang, pdf_dpi=pdf_dpi, max_pages=max_pages)
     output_path = resolve_output_path(source_path, output)
     write_and_register(result_to_markdown(result), output_path, source_path, result.status)
     return output_path
@@ -396,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
             output=args.output,
             lang=args.lang,
             pdf_dpi=args.pdf_dpi,
+            max_pages=args.max_pages,
         )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
@@ -403,6 +408,9 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, ValueError) as exc:
         print(f"[error] {exc}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("\n[abort] OCR interrupted by user.", file=sys.stderr)
+        return 130
     except Exception as exc:  # noqa: BLE001 - OCR engines raise broad runtime errors.
         print(f"[error] OCR extraction failed: {exc}", file=sys.stderr)
         return 1

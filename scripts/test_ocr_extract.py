@@ -5,6 +5,7 @@ import sys
 import pytest
 
 import huashu_cli
+import intake_router
 import ocr_extract
 
 
@@ -21,7 +22,7 @@ def test_load_paddleocr_missing_dependency(monkeypatch):
 
     assert "OCR dependencies are missing" in str(excinfo.value)
     assert "requirements-ocr.txt" in str(excinfo.value)
-    assert "requirements.txt" in str(excinfo.value)
+    assert "default lightweight install" in str(excinfo.value)
     assert "huashu doctor" in str(excinfo.value)
 
 
@@ -40,7 +41,7 @@ def test_main_missing_ocr_dependency_gives_clear_error(tmp_path, monkeypatch, ca
     assert rc == 2
     assert "OCR dependencies are missing" in captured.err
     assert "requirements-ocr.txt" in captured.err
-    assert "requirements.txt" in captured.err
+    assert "default lightweight install" in captured.err
     assert "huashu doctor" in captured.err
 
 
@@ -108,7 +109,7 @@ def test_pdf_missing_renderer_is_reported(tmp_path, monkeypatch):
 
     assert "OCR dependencies are missing" in str(excinfo.value)
     assert "requirements-ocr.txt" in str(excinfo.value)
-    assert "requirements.txt" in str(excinfo.value)
+    assert "default lightweight install" in str(excinfo.value)
 
 
 def test_file_uri_is_normalized_for_ocr_input(tmp_path):
@@ -117,6 +118,12 @@ def test_file_uri_is_normalized_for_ocr_input(tmp_path):
     uri = pdf_path.as_uri()
 
     assert ocr_extract.normalize_source_path(uri) == pdf_path.resolve()
+
+
+def test_ocr_parse_args_accepts_max_pages():
+    args = ocr_extract.parse_args(["scan.pdf", "--max-pages", "1"])
+
+    assert args.max_pages == 1
 
 
 def test_ocr_run_accepts_file_uri(tmp_path, monkeypatch):
@@ -152,7 +159,7 @@ def test_ocr_run_accepts_file_uri(tmp_path, monkeypatch):
     assert "Visible text" in output_path.read_text(encoding="utf-8")
 
 
-def test_huashu_cli_accepts_ocr_route(monkeypatch):
+def test_huashu_cli_accepts_ocr_route(monkeypatch, capsys):
     calls = []
 
     class FakeCompletedProcess:
@@ -166,12 +173,46 @@ def test_huashu_cli_accepts_ocr_route(monkeypatch):
     monkeypatch.setattr(huashu_cli.subprocess, "run", fake_run)
 
     rc = huashu_cli.main()
+    captured = capsys.readouterr()
 
     assert rc == 0
+    assert "Running OCR. This may be slow and memory-heavy." in captured.out
     assert len(calls) == 1
     assert calls[0][0] == (huashu_cli.sys.executable or "python3")
     assert calls[0][1].endswith(os.path.join("scripts", "ocr_extract.py"))
     assert calls[0][2:] == ["scan.png"]
+
+
+def test_huashu_cli_ocr_keyboard_interrupt_is_graceful(monkeypatch, capsys):
+    def fake_run(cmd):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(huashu_cli.sys, "argv", ["huashu_cli.py", "-ocr", "scan.pdf"])
+    monkeypatch.setattr(huashu_cli.subprocess, "run", fake_run)
+
+    rc = huashu_cli.main()
+
+    captured = capsys.readouterr()
+    assert rc == 130
+    assert "[abort] OCR interrupted by user." in captured.out
+
+
+def test_huashu_cli_pdf_mode_flag_routes_through_intake(monkeypatch):
+    calls = []
+
+    def fake_run_intake(value, extra_args=None):
+        calls.append((value, extra_args))
+        return 0
+
+    monkeypatch.delenv("HUASHU_PDF_MODE", raising=False)
+    monkeypatch.setattr(huashu_cli.sys, "argv", ["huashu_cli.py", "--pdf-mode", "ocr", "paper.pdf"])
+    monkeypatch.setattr(intake_router, "run_intake", fake_run_intake)
+
+    rc = huashu_cli.main()
+
+    assert rc == 0
+    assert os.environ["HUASHU_PDF_MODE"] == "ocr"
+    assert calls == [("paper.pdf", [])]
 
 
 @pytest.mark.parametrize("markdown_text", ["", "   \n\t  ", "short text"])
@@ -196,13 +237,14 @@ def test_local_file_short_or_empty_extraction_triggers_ocr(tmp_path, monkeypatch
             return FakeCompletedProcess(0)
         return FakeCompletedProcess(0)
 
+    monkeypatch.setenv("HUASHU_AUTO_OCR", "1")
     monkeypatch.setattr(huashu_cli.subprocess, "run", fake_run)
 
     rc = huashu_cli.run_local_file_conversion(str(source_path))
 
     captured = capsys.readouterr()
     assert rc == 0
-    assert "[ocr] No usable text detected. Falling back to OCR..." in captured.out
+    assert "[ocr] Falling back to OCR..." in captured.out
     assert any(cmd[1].endswith("any_to_md.py") for cmd in calls)
     assert any(cmd[1].endswith("ocr_extract.py") for cmd in calls)
 
@@ -270,16 +312,17 @@ def test_local_file_ocr_missing_dependency_is_graceful(tmp_path, monkeypatch, ca
             return FakeCompletedProcess(2)
         return FakeCompletedProcess(0)
 
+    monkeypatch.setenv("HUASHU_AUTO_OCR", "1")
     monkeypatch.setattr(huashu_cli.subprocess, "run", fake_run)
 
     rc = huashu_cli.run_local_file_conversion(str(source_path))
 
     captured = capsys.readouterr()
     assert rc == 2
-    assert "[ocr] No usable text detected. Falling back to OCR..." in captured.out
+    assert "[ocr] Falling back to OCR..." in captured.out
     assert "OCR dependencies are missing" in captured.err
     assert "requirements-ocr.txt" in captured.err
-    assert "requirements.txt" in captured.err
+    assert "default lightweight install" in captured.err
 
 
 def test_huashu_cli_plain_local_file_uses_auto_fallback_path(tmp_path, monkeypatch):
@@ -287,38 +330,28 @@ def test_huashu_cli_plain_local_file_uses_auto_fallback_path(tmp_path, monkeypat
     source_path.write_bytes(b"%PDF-1.4")
     calls = []
 
-    def fake_local_conversion(filename):
-        calls.append(filename)
+    def fake_run_intake(value, extra_args=None):
+        calls.append((value, extra_args))
         return 0
 
     monkeypatch.setattr(huashu_cli.sys, "argv", ["huashu_cli.py", str(source_path)])
-    monkeypatch.setattr(huashu_cli, "run_local_file_conversion", fake_local_conversion)
+    monkeypatch.setattr(intake_router, "run_intake", fake_run_intake)
 
     rc = huashu_cli.main()
 
     assert rc == 0
-    assert calls == [str(source_path)]
+    assert calls == [(str(source_path), [])]
 
 
-def test_huashu_cli_unresolved_unknown_preserves_legacy_fallback(monkeypatch):
-    calls = []
-
-    class FakeCompletedProcess:
-        returncode = 0
-
-    def fake_run(cmd):
-        calls.append(cmd)
-        return FakeCompletedProcess()
-
+def test_huashu_cli_unresolved_unknown_prints_safe_error(monkeypatch, capsys):
     monkeypatch.setattr(huashu_cli.sys, "argv", ["huashu_cli.py", "not-a-local-file"])
-    monkeypatch.setattr(huashu_cli, "run_local_file_conversion", lambda filename: -1)
-    monkeypatch.setattr(huashu_cli.os.path, "exists", lambda path: path == "/Users/AnundaB/bin/huashu")
-    monkeypatch.setattr(huashu_cli.subprocess, "run", fake_run)
 
     rc = huashu_cli.main()
 
-    assert rc == 0
-    assert calls == [["bash", "/Users/AnundaB/bin/huashu", "not-a-local-file"]]
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "[intake] Detected: unknown" in captured.out
+    assert "No matching local file found" in captured.out
 
 
 def test_should_fallback_to_ocr_threshold():
@@ -338,8 +371,26 @@ def test_huashu_doctor_route(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert rc == 0
     assert "Huashu doctor" in captured.out
+    assert "OCR: optional" in captured.out
     assert "[ok] PaddleOCR" in captured.out
     assert "[ok] PyMuPDF / fitz" in captured.out
+
+
+def test_huashu_doctor_missing_ocr_does_not_fail_core_health(monkeypatch, capsys):
+    def fake_module_available(module_name):
+        return module_name not in {"paddleocr", "paddle", "fitz"}
+
+    monkeypatch.setattr(huashu_cli.sys, "argv", ["huashu_cli.py", "doctor"])
+    monkeypatch.setattr(huashu_cli, "module_available", fake_module_available)
+    monkeypatch.setattr(huashu_cli.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    rc = huashu_cli.main()
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "OCR: optional" in captured.out
+    assert "OCR dependencies: missing" in captured.out
+    assert "Core Huashu is ready. OCR is optional and not installed." in captured.out
 
 
 def test_huashu_setup_ocr_route(monkeypatch):

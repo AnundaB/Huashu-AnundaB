@@ -29,6 +29,22 @@ def should_fallback_to_ocr(markdown_text: str) -> bool:
     return len(re.sub(r"\s+", "", markdown_text or "")) < OCR_FALLBACK_NONSPACE_THRESHOLD
 
 
+def auto_ocr_enabled() -> bool:
+    value = os.environ.get("HUASHU_AUTO_OCR", "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def print_optional_ocr_guidance(reason: str, source_hint: str = "paper.pdf") -> None:
+    print(f"[pdf] Text extraction looks weak: {reason}")
+    print("[ocr] This file appears to need OCR.")
+    print("[ocr] OCR is optional and may be heavy on small laptops.")
+    print("[ocr] To enable OCR:")
+    print("      huashu setup-ocr")
+    print("      or python -m pip install -r requirements-ocr.txt")
+    print("[ocr] To allow automatic OCR fallback:")
+    print(f'      HUASHU_AUTO_OCR=1 huashu "{source_hint}"')
+
+
 def slugify_output_name(value: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9ก-๙._-]+", "-", value).strip("-")
     return slug[:90] or "content"
@@ -472,7 +488,10 @@ def run_local_file_conversion(filename: str) -> int:
             return 1
 
         if should_fallback_to_ocr(markdown_text):
-            print("[ocr] No usable text detected. Falling back to OCR...")
+            if not auto_ocr_enabled():
+                print_optional_ocr_guidance("too little extracted text", resolved_file)
+                return 1
+            print("[ocr] Falling back to OCR...")
             ocr_script = os.path.join(REPO_ROOT, "scripts", "ocr_extract.py")
             ocr_res = subprocess.run([python_exe, ocr_script, resolved_file])
             return ocr_res.returncode
@@ -520,7 +539,7 @@ def module_available(module_name: str) -> bool:
 
 
 def run_doctor() -> int:
-    checks = [
+    core_checks = [
         ("Python executable", bool(sys.executable), sys.executable or "unknown"),
         (
             "Python version",
@@ -532,9 +551,6 @@ def run_doctor() -> int:
         ("html-to-markdown", module_available("html_to_markdown"), "python module: html_to_markdown"),
         ("trafilatura", module_available("trafilatura"), "python module: trafilatura"),
         ("markdownify", module_available("markdownify"), "python module: markdownify"),
-        ("PaddleOCR", module_available("paddleocr"), "python module: paddleocr"),
-        ("PaddlePaddle", module_available("paddle"), "python module: paddle"),
-        ("PyMuPDF / fitz", module_available("fitz"), "python module: fitz"),
         ("NumPy", module_available("numpy"), "python module: numpy"),
         ("BeautifulSoup", module_available("bs4"), "python module: bs4"),
         ("yt-dlp", module_available("yt_dlp"), "python module: yt_dlp"),
@@ -546,32 +562,50 @@ def run_doctor() -> int:
             "python module: youtube_transcript_api",
         ),
     ]
+    ocr_checks = [
+        ("PaddleOCR", module_available("paddleocr"), "python module: paddleocr"),
+        ("PaddlePaddle", module_available("paddle"), "python module: paddle"),
+        ("PyMuPDF / fitz", module_available("fitz"), "python module: fitz"),
+    ]
 
     print("Huashu doctor")
     print("=" * 40)
     missing = 0
-    for label, ok, detail in checks:
+    for label, ok, detail in core_checks:
         status = "ok" if ok else "missing"
         print(f"[{status}] {label}: {detail}")
         if not ok:
             missing += 1
 
+    print("")
+    print("OCR: optional")
+    ocr_installed = all(ok for _, ok, _ in ocr_checks)
+    print(f"OCR dependencies: {'installed' if ocr_installed else 'missing'}")
+    for label, ok, detail in ocr_checks:
+        status = "ok" if ok else "missing"
+        print(f"[{status}] {label}: {detail}")
+
     if missing:
         print("")
-        print("Some dependencies are missing.")
-        print("For the full recommended install:")
+        print("Some core dependencies are missing.")
+        print("For the default lightweight install:")
         print("  python -m pip install -r requirements.txt")
-        print("")
-        print("If you intentionally use the lightweight/core install and only need OCR:")
-        print("  python -m pip install -r requirements-ocr.txt")
         return 1
+
+    if not ocr_installed:
+        print("")
+        print("Core Huashu is ready. OCR is optional and not installed.")
+        print("To enable OCR:")
+        print("  huashu setup-ocr")
+        print("  or python -m pip install -r requirements-ocr.txt")
     return 0
 
 
 def run_setup_ocr() -> int:
     requirements_path = os.path.join(REPO_ROOT, "requirements-ocr.txt")
     print("Installing Huashu OCR dependencies from requirements-ocr.txt...")
-    print("This is a fallback convenience command; the default recommended install is:")
+    print("OCR is optional and may be slow or memory-heavy on small laptops.")
+    print("The default lightweight install remains:")
     print("  python -m pip install -r requirements.txt")
     return subprocess.run([sys.executable or "python3", "-m", "pip", "install", "-r", requirements_path]).returncode
 
@@ -601,7 +635,7 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -x-browser <url>                    Force browser-assisted X/Twitter post extraction.
   python3 scripts/huashu_cli.py -clipboard                          Import X/Twitter content from clipboard.
   python3 scripts/huashu_cli.py -organize-auto [--apply]            Organize legacy auto outputs into categorized folders.
-  python3 scripts/huashu_cli.py <url>                               Smart docs-site crawl or single-page conversion.
+  python3 scripts/huashu_cli.py "<anything>"                        Universal intake router for URLs, files, OCR, repos, and media.
   python3 scripts/huashu_cli.py -help                               Show this help message.
 
 Usage (Interactive Mode):
@@ -797,6 +831,22 @@ def main() -> int:
     if arg1 in ("setup-ocr", "-setup-ocr", "--setup-ocr"):
         return run_setup_ocr()
 
+    if arg1 in ("--pdf-mode", "-pdf-mode"):
+        if len(sys.argv) < 4:
+            print("[error] Please specify a PDF mode and input.")
+            print("Usage: python3 scripts/huashu_cli.py --pdf-mode auto|text|ocr <file-or-url>")
+            return 1
+        mode = sys.argv[2].lower()
+        if mode not in ("auto", "text", "ocr"):
+            print(f"[error] Unsupported PDF mode: {mode}")
+            print("Supported modes: auto, text, ocr")
+            return 1
+        os.environ["HUASHU_PDF_MODE"] = mode
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import intake_router
+
+        return intake_router.run_intake(sys.argv[3], extra_args=sys.argv[4:])
+
     if arg1 in ("-organize-auto", "--organize-auto"):
         python_exe = sys.executable or "python3"
         organize_script = os.path.join(REPO_ROOT, "scripts", "organize_auto_outputs.py")
@@ -814,8 +864,14 @@ def main() -> int:
         ocr_script = os.path.join(REPO_ROOT, "scripts", "ocr_extract.py")
         cmd = [python_exe, ocr_script]
         cmd.extend(sys.argv[2:])
-        res = subprocess.run(cmd)
-        return res.returncode
+        print("[ocr] Running OCR. This may be slow and memory-heavy.")
+        print("[ocr] For large PDFs, use --max-pages 1 to test first.")
+        try:
+            res = subprocess.run(cmd)
+            return res.returncode
+        except KeyboardInterrupt:
+            print("\n[abort] OCR interrupted by user.")
+            return 130
 
     if arg1 in ("-repo", "--repo", "repo"):
         if len(sys.argv) < 3:
@@ -954,6 +1010,24 @@ def main() -> int:
         cmd.extend(extra_args)
         res = subprocess.run(cmd)
         return res.returncode
+
+    reserved_commands = {
+        "docs",
+        "page",
+        "help",
+        "ingest",
+        "search",
+        "note",
+        "latest",
+        "topics",
+        "topics-latest",
+        "upload-ready",
+    }
+    if not sys.argv[1].startswith("-") and arg1 not in reserved_commands:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import intake_router
+
+        return intake_router.run_intake(sys.argv[1], extra_args=sys.argv[2:])
 
     # Check if first argument is a URL, or -docs / -page command
     is_url_arg = arg1.startswith(("http://", "https://"))

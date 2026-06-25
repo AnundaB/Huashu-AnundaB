@@ -1,7 +1,7 @@
 # huashu-md-html - OCR Python dependencies
 #
-# OCR is heavier than the core install. The full recommended requirements.txt
-# includes this file so OCR works for default users.
+# OCR is heavier than the default install. Install this add-on only when you
+# need OCR for scanned PDFs, screenshots, or image-heavy documents.
 #
 # PaddleOCR may download OCR models on first use, depending on engine behavior.
 

@@ -18,10 +18,14 @@ def test_requirement_profiles_exist():
     assert (REPO_ROOT / "requirements-ocr.txt").exists()
 
 
-def test_default_requirements_include_core_and_ocr_profiles():
+def test_default_requirements_include_core_but_not_ocr_profile():
     lines = requirement_lines("requirements.txt")
     assert "-r requirements-core.txt" in lines
-    assert "-r requirements-ocr.txt" in lines
+    assert "-r requirements-ocr.txt" not in lines
+    text = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8").lower()
+    assert "paddleocr" not in text
+    assert "paddlepaddle" not in text
+    assert "pymupdf" not in text
 
 
 def test_core_requirements_do_not_include_ocr_stack():

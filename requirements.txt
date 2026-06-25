@@ -1,7 +1,7 @@
-# huashu-md-html - full recommended Python dependencies
+# huashu-md-html - default lightweight Python dependencies
 #
-# This is the default install path for users who expect the README's
-# "Turn Anything Into Markdown" feature set to work, including OCR.
+# This is the recommended default install for fast, common extraction.
+# Heavy OCR dependencies are optional; install requirements-ocr.txt only
+# when you need OCR for scanned PDFs or images.
 
 -r requirements-core.txt
--r requirements-ocr.txt

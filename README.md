@@ -53,8 +53,8 @@ Huashu-AnundaB turns that scattered information into a local Markdown knowledge 
 | ChatGPT shared conversations | Markdown conversation archive |
 | X/Twitter posts | Markdown |
 | X/Twitter videos | Metadata + audio transcript when possible |
-| PDFs and scanned documents | OCR Markdown |
-| Images and screenshots | OCR Markdown |
+| Born-digital PDFs | Markdown via text extraction |
+| Scanned PDFs, images, and screenshots | Optional OCR Markdown |
 | Local files | Markdown where supported |
 
 ---
@@ -80,6 +80,27 @@ Markdown is simple, portable, searchable, git-friendly, and easy to use with AI 
 ---
 
 ## Quickstart
+
+## One Command Mode
+
+```bash
+huashu "<anything>"
+```
+
+Huashu detects the input type and routes automatically:
+
+- URLs
+- YouTube videos/playlists
+- GitHub repositories
+- ChatGPT shares
+- X/Twitter posts/videos
+- PDFs
+- born-digital PDFs
+- scanned PDFs and images when optional OCR is enabled
+- code files
+- JSON/YAML/text files
+
+Explicit commands such as `huashu -repo`, `huashu -ocr`, `huashu -youtube`, and `huashu -youtube-playlist` are still available for advanced usage.
 
 ### Capture a web page
 
@@ -112,7 +133,7 @@ videos/
 ### Extract a GitHub repository
 
 ```bash
-huashu -repo "https://github.com/owner/repo"
+huashu "https://github.com/owner/repo"
 ```
 
 This creates a local repository knowledge base:
@@ -125,6 +146,8 @@ repo_metadata.md
 architecture.md
 dependency_graph.md
 imports.csv
+symbols.md
+symbols.jsonl
 semantic_index/
 files/
 ```
@@ -145,10 +168,11 @@ Search results include:
 ### Extract OCR from a scanned PDF or image
 
 ```bash
-huashu -ocr scanned_document.pdf
+huashu -ocr "scanned_document.pdf"
+huashu -ocr "screenshot.png"
 ```
 
-The default recommended install includes OCR dependencies. OCR dependencies are heavier than core dependencies, and the first OCR run may download OCR models depending on PaddleOCR engine behavior.
+OCR is optional because it uses heavier model-based dependencies. The default install keeps Huashu lightweight for normal laptops. To enable OCR, run `huashu setup-ocr` or `python -m pip install -r requirements-ocr.txt`.
 
 ### Extract a ChatGPT shared conversation
 
@@ -207,6 +231,8 @@ outputs/auto/github/<repo>/
   architecture.md
   dependency_graph.md
   imports.csv
+  symbols.md
+  symbols.jsonl
   semantic_index/
     chunks.jsonl
     vectors.npy
@@ -266,7 +292,13 @@ confidence: available_when_supported
 warnings: []
 ```
 
-The full recommended install includes OCR support. If you intentionally use the lightweight/core install, OCR commands will print profile-specific install guidance instead of crashing.
+OCR is not part of the default lightweight install. OCR commands print profile-specific install guidance instead of crashing when OCR dependencies are missing.
+
+One-command mode does not silently launch OCR by default. If a PDF looks scanned or image-heavy, Huashu prints guidance instead of starting a model download. To allow automatic OCR fallback after installing OCR dependencies:
+
+```bash
+HUASHU_AUTO_OCR=1 huashu "scanned_document.pdf"
+```
 
 ---
 
@@ -368,7 +400,9 @@ Do not commit personal outputs, transcripts, media files, cookies, tokens, or `.
 
 ## Installation
 
-`requirements.txt` is the full recommended install for users who want Huashu's advertised feature set, including OCR for scanned PDFs, screenshots, and image-heavy documents. OCR dependencies are heavier than the core dependencies, and PaddleOCR may download OCR models on first use.
+`requirements.txt` is the default lightweight install for fast, common extraction: web pages, YouTube transcripts and playlists, GitHub repositories, ChatGPT shares, X/text workflows, local text/code/data files, and born-digital PDFs via text extraction.
+
+OCR for scanned PDFs, screenshots, and image-heavy documents is optional because it is heavier and model-based.
 
 ### macOS / Linux
 
@@ -387,21 +421,21 @@ python -m pytest
 huashu -latest
 ```
 
-### Lightweight / Core Install
+### Optional OCR Add-On
 
-Advanced users who want a smaller environment and do not need OCR can install only the core profile:
-
-```bash
-pip install -r requirements-core.txt
-pip install -e .
-```
-
-If you later need OCR from a core install, run:
+If you need OCR, add the OCR profile after the default install:
 
 ```bash
 python -m pip install -r requirements-ocr.txt
-huashu doctor
 ```
+
+or use:
+
+```bash
+huashu setup-ocr
+```
+
+OCR may download models on first use depending on the engine. On small laptops, test large PDFs with `huashu -ocr file.pdf --max-pages 1` before running the whole document.
 
 ### Windows via WSL2
 
@@ -435,11 +469,11 @@ huashu -latest
 
 ## Install Profiles and Troubleshooting
 
-Huashu has two Python dependency profiles:
+Huashu has Python dependency profiles:
 
-- `requirements.txt`: full recommended install, including OCR.
-- `requirements-core.txt`: lightweight/core install without the heavy OCR stack.
-- `requirements-ocr.txt`: OCR-only add-on for users who started from the core install.
+- `requirements.txt`: default lightweight install.
+- `requirements-core.txt`: core dependency list used by the default install.
+- `requirements-ocr.txt`: optional OCR add-on for scanned PDFs, screenshots, and image-heavy documents.
 
 ### FFmpeg
 
@@ -459,29 +493,29 @@ sudo apt install -y ffmpeg
 
 ### OCR
 
-OCR is included in the full recommended install:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-If you chose the lightweight/core install, add OCR later with:
+OCR is optional and not included in the default install:
 
 ```bash
 python -m pip install -r requirements-ocr.txt
+```
+
+or:
+
+```bash
+huashu setup-ocr
 ```
 
 OCR dependencies are heavier than core dependencies. PaddleOCR may download OCR models on first OCR use.
 
 ### Doctor
 
-`huashu doctor` is a troubleshooting command, not a required setup step. It checks the local Python executable, Python version, FFmpeg, MarkItDown, PaddleOCR, PaddlePaddle, PyMuPDF, and repository/search-related dependencies.
+`huashu doctor` is a troubleshooting command, not a required setup step. It checks the local Python executable, Python version, FFmpeg, MarkItDown, repository/search-related dependencies, and reports OCR as optional.
 
 ```bash
 huashu doctor
 ```
 
-If OCR dependencies are missing from a lightweight/core install, `huashu setup-ocr` is available as a fallback convenience:
+If OCR dependencies are missing, `huashu setup-ocr` is available as a convenience:
 
 ```bash
 huashu setup-ocr
@@ -543,7 +577,7 @@ It is a local knowledge extraction tool focused on turning useful public or user
 
 Planned or possible next steps:
 
-- automatic OCR fallback for scanned PDFs
+- opt-in automatic OCR fallback for scanned PDFs
 - better repository symbol extraction
 - cross-repository search
 - repository Q&A

@@ -1,6 +1,7 @@
 # huashu-md-html - core Python dependencies
 #
-# Lightweight install profile for users who do not want the heavier OCR stack.
+# Default lightweight install profile. Heavy OCR dependencies are optional and
+# live in requirements-ocr.txt.
 #
 # System dependencies installed separately:
 #   pandoc  - needed by md_to_html.py
