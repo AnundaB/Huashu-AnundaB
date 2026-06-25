@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import csv
+import importlib.util
 import json
 import re
 import shutil
@@ -31,6 +32,17 @@ def should_fallback_to_ocr(markdown_text: str) -> bool:
 def slugify_output_name(value: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9ก-๙._-]+", "-", value).strip("-")
     return slug[:90] or "content"
+
+
+def normalize_local_source_arg(value: str) -> str:
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme == "file":
+        if parsed.netloc and parsed.netloc not in ("localhost", "127.0.0.1"):
+            path_text = f"//{parsed.netloc}{parsed.path}"
+        else:
+            path_text = parsed.path
+        return urllib.parse.unquote(path_text)
+    return value
 
 
 def is_github_repo_url(url: str) -> bool:
@@ -64,6 +76,8 @@ def find_input_file(filename: str) -> str | None:
       3. inputs/consensus/ relative to repo
       4. ~/Downloads/
     """
+    filename = normalize_local_source_arg(filename)
+
     # 1. Exact path
     if os.path.exists(filename):
         return os.path.abspath(filename)
@@ -501,6 +515,67 @@ def run_local_file_conversion(filename: str) -> int:
     return 0
 
 
+def module_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def run_doctor() -> int:
+    checks = [
+        ("Python executable", bool(sys.executable), sys.executable or "unknown"),
+        (
+            "Python version",
+            sys.version_info >= (3, 10),
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        ),
+        ("ffmpeg", shutil.which("ffmpeg") is not None, shutil.which("ffmpeg") or "missing"),
+        ("MarkItDown", module_available("markitdown"), "python module: markitdown"),
+        ("html-to-markdown", module_available("html_to_markdown"), "python module: html_to_markdown"),
+        ("trafilatura", module_available("trafilatura"), "python module: trafilatura"),
+        ("markdownify", module_available("markdownify"), "python module: markdownify"),
+        ("PaddleOCR", module_available("paddleocr"), "python module: paddleocr"),
+        ("PaddlePaddle", module_available("paddle"), "python module: paddle"),
+        ("PyMuPDF / fitz", module_available("fitz"), "python module: fitz"),
+        ("NumPy", module_available("numpy"), "python module: numpy"),
+        ("BeautifulSoup", module_available("bs4"), "python module: bs4"),
+        ("yt-dlp", module_available("yt_dlp"), "python module: yt_dlp"),
+        ("Playwright", module_available("playwright"), "python module: playwright"),
+        ("python-docx", module_available("docx"), "python module: docx"),
+        (
+            "YouTube Transcript API",
+            module_available("youtube_transcript_api"),
+            "python module: youtube_transcript_api",
+        ),
+    ]
+
+    print("Huashu doctor")
+    print("=" * 40)
+    missing = 0
+    for label, ok, detail in checks:
+        status = "ok" if ok else "missing"
+        print(f"[{status}] {label}: {detail}")
+        if not ok:
+            missing += 1
+
+    if missing:
+        print("")
+        print("Some dependencies are missing.")
+        print("For the full recommended install:")
+        print("  python -m pip install -r requirements.txt")
+        print("")
+        print("If you intentionally use the lightweight/core install and only need OCR:")
+        print("  python -m pip install -r requirements-ocr.txt")
+        return 1
+    return 0
+
+
+def run_setup_ocr() -> int:
+    requirements_path = os.path.join(REPO_ROOT, "requirements-ocr.txt")
+    print("Installing Huashu OCR dependencies from requirements-ocr.txt...")
+    print("This is a fallback convenience command; the default recommended install is:")
+    print("  python -m pip install -r requirements.txt")
+    return subprocess.run([sys.executable or "python3", "-m", "pip", "install", "-r", requirements_path]).returncode
+
+
 def print_help():
     """
     Prints human-friendly CLI usage guidance.
@@ -520,6 +595,8 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -repo <github_repo_url>              Extract text source files from a GitHub repository.
   python3 scripts/huashu_cli.py -repo-search "<query>"               Search the latest extracted repository semantic index.
   python3 scripts/huashu_cli.py -ocr <file>                         Optional OCR for images and scanned PDFs.
+  python3 scripts/huashu_cli.py doctor                              Diagnose local dependencies.
+  python3 scripts/huashu_cli.py setup-ocr                           Install OCR dependencies as a fallback convenience.
   python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
   python3 scripts/huashu_cli.py -x-browser <url>                    Force browser-assisted X/Twitter post extraction.
   python3 scripts/huashu_cli.py -clipboard                          Import X/Twitter content from clipboard.
@@ -713,6 +790,12 @@ def main() -> int:
         return 0
 
     arg1 = sys.argv[1].lower()
+
+    if arg1 in ("doctor", "-doctor", "--doctor"):
+        return run_doctor()
+
+    if arg1 in ("setup-ocr", "-setup-ocr", "--setup-ocr"):
+        return run_setup_ocr()
 
     if arg1 in ("-organize-auto", "--organize-auto"):
         python_exe = sys.executable or "python3"

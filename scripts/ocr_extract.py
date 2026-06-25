@@ -2,9 +2,9 @@
 """
 ocr_extract.py - Optional OCR extraction for image and scanned document inputs.
 
-This module intentionally keeps OCR dependencies out of Huashu's base install.
 PaddleOCR is imported only when the user explicitly runs this script or the
-Huashu CLI routes to it.
+Huashu CLI routes to it, so lightweight/core installs can still fail with clear
+diagnostics instead of stack traces.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import importlib
 import re
 import sys
 import tempfile
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean
@@ -24,24 +25,37 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 PDF_SUFFIXES = {".pdf"}
 
-PADDLEOCR_INSTALL_HELP = """\
-PaddleOCR is not installed. Optional OCR support is dependency-heavy, so Huashu
-does not install it by default.
+OCR_INSTALL_HELP = """\
+OCR dependencies are missing.
 
-Install it in your Huashu environment with:
+If you installed Huashu with the lightweight/core install, run:
 
-    pip install paddleocr
+  python -m pip install -r requirements-ocr.txt
 
-Depending on your platform, PaddleOCR may also require a compatible PaddlePaddle
-runtime. See PaddleOCR installation guidance for CPU/GPU-specific setup.
+For the full recommended install, run:
+
+  python -m pip install -r requirements.txt
+
+Then verify:
+
+  huashu doctor
 """
+PADDLEOCR_INSTALL_HELP = OCR_INSTALL_HELP
 
 PYMUPDF_INSTALL_HELP = """\
-PDF OCR needs a local PDF page renderer. Install PyMuPDF to render pages first:
+OCR dependencies are missing.
 
-    pip install pymupdf
+If you installed Huashu with the lightweight/core install, run:
 
-TODO: add alternate PDF renderers for environments where PyMuPDF is unavailable.
+  python -m pip install -r requirements-ocr.txt
+
+For the full recommended install, run:
+
+  python -m pip install -r requirements.txt
+
+Then verify:
+
+  huashu doctor
 """
 
 
@@ -120,6 +134,17 @@ def load_paddleocr_class():
             "Try upgrading it with: pip install --upgrade paddleocr"
         )
     return paddleocr_class
+
+
+def normalize_source_path(source: str) -> Path:
+    parsed = urllib.parse.urlparse(source)
+    if parsed.scheme == "file":
+        if parsed.netloc and parsed.netloc not in ("localhost", "127.0.0.1"):
+            path_text = f"//{parsed.netloc}{parsed.path}"
+        else:
+            path_text = parsed.path
+        return Path(urllib.parse.unquote(path_text)).expanduser().resolve()
+    return Path(source).expanduser().resolve()
 
 
 def render_pdf_pages(pdf_path: Path, dpi: int) -> tuple[list[Path], tempfile.TemporaryDirectory[str]]:
@@ -347,9 +372,9 @@ def write_and_register(markdown: str, output_path: Path, source_path: Path, stat
 
 
 def run(source: str, engine: str, output: str | None, lang: str, pdf_dpi: int) -> Path:
-    source_path = Path(source).expanduser().resolve()
+    source_path = normalize_source_path(source)
     if not source_path.exists():
-        raise FileNotFoundError(f"Input file not found: {source}")
+        raise FileNotFoundError(f"Input file not found: {source_path}")
     if not source_path.is_file():
         raise ValueError(f"Input path is not a file: {source}")
 

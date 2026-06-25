@@ -1,0 +1,10 @@
+# huashu-md-html - OCR Python dependencies
+#
+# OCR is heavier than the core install. The full recommended requirements.txt
+# includes this file so OCR works for default users.
+#
+# PaddleOCR may download OCR models on first use, depending on engine behavior.
+
+paddleocr
+paddlepaddle
+pymupdf

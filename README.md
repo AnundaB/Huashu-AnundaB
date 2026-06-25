@@ -148,7 +148,7 @@ Search results include:
 huashu -ocr scanned_document.pdf
 ```
 
-OCR support is optional and dependency-heavy. Huashu keeps OCR fallback-oriented so normal installs stay lightweight.
+The default recommended install includes OCR dependencies. OCR dependencies are heavier than core dependencies, and the first OCR run may download OCR models depending on PaddleOCR engine behavior.
 
 ### Extract a ChatGPT shared conversation
 
@@ -266,9 +266,7 @@ confidence: available_when_supported
 warnings: []
 ```
 
-OCR is optional.
-
-If OCR dependencies are missing, Huashu prints install guidance instead of crashing.
+The full recommended install includes OCR support. If you intentionally use the lightweight/core install, OCR commands will print profile-specific install guidance instead of crashing.
 
 ---
 
@@ -370,6 +368,8 @@ Do not commit personal outputs, transcripts, media files, cookies, tokens, or `.
 
 ## Installation
 
+`requirements.txt` is the full recommended install for users who want Huashu's advertised feature set, including OCR for scanned PDFs, screenshots, and image-heavy documents. OCR dependencies are heavier than the core dependencies, and PaddleOCR may download OCR models on first use.
+
 ### macOS / Linux
 
 ```bash
@@ -385,6 +385,22 @@ pip install -e .
 
 python -m pytest
 huashu -latest
+```
+
+### Lightweight / Core Install
+
+Advanced users who want a smaller environment and do not need OCR can install only the core profile:
+
+```bash
+pip install -r requirements-core.txt
+pip install -e .
+```
+
+If you later need OCR from a core install, run:
+
+```bash
+python -m pip install -r requirements-ocr.txt
+huashu doctor
 ```
 
 ### Windows via WSL2
@@ -417,9 +433,13 @@ huashu -latest
 
 ---
 
-## Optional Dependencies
+## Install Profiles and Troubleshooting
 
-Some features require extra system or Python dependencies.
+Huashu has two Python dependency profiles:
+
+- `requirements.txt`: full recommended install, including OCR.
+- `requirements-core.txt`: lightweight/core install without the heavy OCR stack.
+- `requirements-ocr.txt`: OCR-only add-on for users who started from the core install.
 
 ### FFmpeg
 
@@ -439,16 +459,33 @@ sudo apt install -y ffmpeg
 
 ### OCR
 
-OCR is optional.
-
-Depending on the OCR path, you may need:
+OCR is included in the full recommended install:
 
 ```bash
-pip install paddleocr
-pip install pymupdf
+python -m pip install -r requirements.txt
 ```
 
-Huashu should continue working without these dependencies; OCR commands will print guidance if something is missing.
+If you chose the lightweight/core install, add OCR later with:
+
+```bash
+python -m pip install -r requirements-ocr.txt
+```
+
+OCR dependencies are heavier than core dependencies. PaddleOCR may download OCR models on first OCR use.
+
+### Doctor
+
+`huashu doctor` is a troubleshooting command, not a required setup step. It checks the local Python executable, Python version, FFmpeg, MarkItDown, PaddleOCR, PaddlePaddle, PyMuPDF, and repository/search-related dependencies.
+
+```bash
+huashu doctor
+```
+
+If OCR dependencies are missing from a lightweight/core install, `huashu setup-ocr` is available as a fallback convenience:
+
+```bash
+huashu setup-ocr
+```
 
 ---
 

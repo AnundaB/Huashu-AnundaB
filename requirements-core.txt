@@ -1,0 +1,33 @@
+# huashu-md-html - core Python dependencies
+#
+# Lightweight install profile for users who do not want the heavier OCR stack.
+#
+# System dependencies installed separately:
+#   pandoc  - needed by md_to_html.py
+#   ffmpeg  - needed by audio/video transcription paths
+
+# Any file or URL -> Markdown
+markitdown[all]>=0.1.5
+
+# HTML / URL -> Markdown and docs crawling
+html-to-markdown>=3.3.0
+trafilatura>=2.0.0
+markdownify>=1.2.0
+beautifulsoup4>=4.12.0
+
+# YouTube, X/video metadata, and playlist extraction
+yt-dlp>=2024.1.0
+youtube-transcript-api>=0.6.0
+
+# Local semantic search and repository intelligence
+numpy>=1.26.0
+
+# ChatGPT/browser-assisted extraction
+playwright>=1.40.0
+
+# Markdown -> DOCX support
+python-docx>=1.1.0
+Pillow>=10.0.0
+
+# Optional - capability 1 with LLM image description
+# openai>=1.0.0

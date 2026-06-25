@@ -1,17 +1,7 @@
-# huashu-md-html — Python dependencies
+# huashu-md-html - full recommended Python dependencies
 #
-# System dependency (install separately): pandoc
-#   macOS:        brew install pandoc
-#   Debian/Ubuntu: apt install pandoc
-#   Windows:      choco install pandoc
+# This is the default install path for users who expect the README's
+# "Turn Anything Into Markdown" feature set to work, including OCR.
 
-# Capability 1: any → md
-markitdown[all]>=0.1.5
-
-# Capability 3: html/url → md
-html-to-markdown>=3.3.0
-trafilatura>=2.0.0
-markdownify>=1.2.0
-
-# Optional — capability 1 with LLM image description
-# openai>=1.0.0
+-r requirements-core.txt
+-r requirements-ocr.txt
