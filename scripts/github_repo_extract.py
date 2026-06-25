@@ -152,6 +152,28 @@ class RepoExtractionResult:
     errors: list[str] = field(default_factory=list)
 
 
+@dataclass
+class SymbolRecord:
+    repo: str
+    path: str
+    name: str
+    kind: str
+    line: int | None = None
+    parent_class: str | None = None
+    preview: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "repo": self.repo,
+            "path": self.path,
+            "name": self.name,
+            "kind": self.kind,
+            "line": self.line,
+            "parent_class": self.parent_class,
+            "preview": self.preview,
+        }
+
+
 def slugify(value: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
     return slug[:90] or "repo"
@@ -457,6 +479,127 @@ def read_text_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def source_line_preview(source: str, node: ast.AST) -> str | None:
+    lineno = getattr(node, "lineno", None)
+    if not isinstance(lineno, int) or lineno < 1:
+        return None
+    lines = source.splitlines()
+    if lineno > len(lines):
+        return None
+    preview = lines[lineno - 1].strip()
+    return preview or None
+
+
+def extract_python_symbols_from_source(repo: str, path: str, source: str) -> list[SymbolRecord]:
+    try:
+        tree = ast.parse(source, filename=path)
+    except SyntaxError:
+        return []
+
+    symbols: list[SymbolRecord] = []
+
+    def record(node: ast.AST, name: str, kind: str, parent_class: str | None = None) -> None:
+        symbols.append(
+            SymbolRecord(
+                repo=repo,
+                path=path,
+                name=name,
+                kind=kind,
+                line=getattr(node, "lineno", None),
+                parent_class=parent_class,
+                preview=source_line_preview(source, node),
+            )
+        )
+
+    def walk_body(body: list[ast.stmt], parent_class: str | None = None) -> None:
+        for node in body:
+            if isinstance(node, ast.ClassDef):
+                record(node, node.name, "class")
+                walk_body(node.body, node.name)
+            elif isinstance(node, ast.AsyncFunctionDef):
+                if parent_class:
+                    record(node, node.name, "async_method", parent_class)
+                else:
+                    record(node, node.name, "async_function")
+            elif isinstance(node, ast.FunctionDef):
+                if parent_class:
+                    record(node, node.name, "method", parent_class)
+                else:
+                    record(node, node.name, "function")
+
+    walk_body(tree.body)
+    return sorted(symbols, key=lambda item: (item.path.lower(), item.line or 0, item.kind, item.name.lower()))
+
+
+def extract_symbols(result: RepoExtractionResult) -> list[SymbolRecord]:
+    repo = repo_identifier(result)
+    records: list[SymbolRecord] = []
+    for item in sorted(result.extracted_files, key=lambda file: file.path.lower()):
+        if item.extension != ".py":
+            continue
+        records.extend(extract_python_symbols_from_source(repo, item.path, read_text_file(item.local_path)))
+    return sorted(records, key=lambda item: (item.path.lower(), item.line or 0, item.kind, item.name.lower()))
+
+
+def write_symbols_jsonl(result: RepoExtractionResult, symbols: list[SymbolRecord]) -> Path:
+    path = result.run_dir / "symbols.jsonl"
+    with path.open("w", encoding="utf-8") as f:
+        for symbol in symbols:
+            f.write(json.dumps(symbol.to_dict(), ensure_ascii=False) + "\n")
+    return path
+
+
+def write_symbols_markdown(result: RepoExtractionResult, symbols: list[SymbolRecord]) -> Path:
+    path = result.run_dir / "symbols.md"
+    by_file: dict[str, list[SymbolRecord]] = defaultdict(list)
+    kind_counts = Counter(symbol.kind for symbol in symbols)
+    for symbol in symbols:
+        by_file[symbol.path].append(symbol)
+
+    py_files = [item for item in result.extracted_files if item.extension == ".py"]
+    lines = [
+        f"# Python Symbols: {result.spec.owner}/{result.spec.repo}",
+        "",
+        "## Summary",
+        f"- Repository: `{repo_identifier(result)}`",
+        f"- Python files analyzed: `{len(py_files)}`",
+        f"- Files with symbols: `{len(by_file)}`",
+        f"- Total symbols: `{len(symbols)}`",
+        f"- Classes: `{kind_counts.get('class', 0)}`",
+        f"- Functions: `{kind_counts.get('function', 0)}`",
+        f"- Async functions: `{kind_counts.get('async_function', 0)}`",
+        f"- Methods: `{kind_counts.get('method', 0)}`",
+        f"- Async methods: `{kind_counts.get('async_method', 0)}`",
+        "",
+        "## Symbols by File",
+        "",
+    ]
+
+    if not symbols:
+        lines.append("No Python symbols detected.")
+        lines.append("")
+    else:
+        for file_path in sorted(by_file.keys(), key=str.lower):
+            lines.append(f"### `{file_path}`")
+            lines.append("")
+            for symbol in sorted(by_file[file_path], key=lambda item: (item.line or 0, item.kind, item.name.lower())):
+                parent = f" `{symbol.parent_class}`." if symbol.parent_class else " "
+                line = symbol.line if symbol.line is not None else "?"
+                preview = f" - `{symbol.preview}`" if symbol.preview else ""
+                lines.append(f"- L{line}: `{symbol.kind}`{parent}`{symbol.name}`{preview}")
+            lines.append("")
+
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return path
+
+
+def write_symbols(result: RepoExtractionResult) -> tuple[Path, Path]:
+    symbols = extract_symbols(result)
+    jsonl_path = write_symbols_jsonl(result, symbols)
+    md_path = write_symbols_markdown(result, symbols)
+    return md_path, jsonl_path
+
+
 def python_module_name_for_path(path: str) -> str | None:
     pure = PurePosixPath(path)
     if pure.suffix != ".py":
@@ -665,6 +808,10 @@ def build_repo_semantic_index(
     architecture_path = result.run_dir / "architecture.md"
     if architecture_path.exists():
         source_items.append(("architecture.md", ".md", architecture_path))
+
+    symbols_path = result.run_dir / "symbols.md"
+    if symbols_path.exists():
+        source_items.append(("symbols.md", ".md", symbols_path))
 
     chunks_data: list[dict[str, Any]] = []
     vectors_list: list[np.ndarray] = []
@@ -1155,6 +1302,7 @@ def extract_repo(
     write_combined(result)
     write_architecture(result)
     write_dependency_graph(result)
+    write_symbols(result)
     build_repo_semantic_index(result)
     index_path = write_repository_index(result)
     register_repository_index(index_path, result)
@@ -1206,6 +1354,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"architecture.md: {result.run_dir / 'architecture.md'}")
     print(f"dependency_graph.md: {result.run_dir / 'dependency_graph.md'}")
     print(f"imports.csv: {result.run_dir / 'imports.csv'}")
+    print(f"symbols.md: {result.run_dir / 'symbols.md'}")
+    print(f"symbols.jsonl: {result.run_dir / 'symbols.jsonl'}")
     print(f"semantic_index: {result.run_dir / SEMANTIC_INDEX_DIRNAME}")
     print(f"Text files extracted: {len(result.extracted_files)}")
     print(f"Skipped files: {len(result.skipped_files)}")

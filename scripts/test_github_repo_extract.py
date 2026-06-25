@@ -73,10 +73,17 @@ def test_extract_repo_writes_index_combined_tree_metadata_and_files(tmp_path, mo
         "Cargo.toml": b"[package]\n",
         "go.mod": b"module x\n",
         "src/app.py": b"import os\nfrom engine import run\nfrom risk import kernel\n",
-        "src/engine.py": b"from risk.kernel import RiskKernel\n",
+        "src/engine.py": b"from risk.kernel import RiskKernel\n\nasync def run():\n    return RiskKernel()\n",
         "src/main.py": b"import app as application\nfrom engine import run\n\ndef main(): pass\n",
         "src/risk/__init__.py": b"",
-        "src/risk/kernel.py": b"import json\nclass RiskKernel: pass\n",
+        "src/risk/kernel.py": (
+            b"import json\n\n"
+            b"class RiskKernel:\n"
+            b"    def score(self):\n"
+            b"        return 1\n\n"
+            b"    async def async_score(self):\n"
+            b"        return 2\n"
+        ),
         "src/view.tsx": b"export const x=1\n",
         "tests/test_app.py": b"def test_app(): pass\n",
         "docs/guide.md": b"# Guide\n",
@@ -103,6 +110,8 @@ def test_extract_repo_writes_index_combined_tree_metadata_and_files(tmp_path, mo
     assert (result.run_dir / "architecture.md").exists()
     assert (result.run_dir / "dependency_graph.md").exists()
     assert (result.run_dir / "imports.csv").exists()
+    assert (result.run_dir / "symbols.md").exists()
+    assert (result.run_dir / "symbols.jsonl").exists()
     assert (result.run_dir / "combined.md").exists()
     assert (result.run_dir / "tree.txt").exists()
     assert (result.run_dir / "repo_metadata.md").exists()
@@ -154,6 +163,36 @@ def test_extract_repo_writes_index_combined_tree_metadata_and_files(tmp_path, mo
     assert "- src/risk/kernel.py" in graph
     assert "### src/main.py" in graph
 
+    symbol_records = [
+        json.loads(line)
+        for line in (result.run_dir / "symbols.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    symbol_keys = {(record["path"], record["name"], record["kind"], record["parent_class"]) for record in symbol_records}
+    assert ("src/risk/kernel.py", "RiskKernel", "class", None) in symbol_keys
+    assert ("src/risk/kernel.py", "score", "method", "RiskKernel") in symbol_keys
+    assert ("src/risk/kernel.py", "async_score", "async_method", "RiskKernel") in symbol_keys
+    assert ("src/engine.py", "run", "async_function", None) in symbol_keys
+    assert ("src/main.py", "main", "function", None) in symbol_keys
+    score_record = next(record for record in symbol_records if record["name"] == "score")
+    assert score_record["repo"] == "owner/repo"
+    assert score_record["line"] == 4
+    assert score_record["preview"] == "def score(self):"
+
+    symbols_md = (result.run_dir / "symbols.md").read_text(encoding="utf-8")
+    assert "# Python Symbols: owner/repo" in symbols_md
+    assert "## Summary" in symbols_md
+    assert "- Total symbols: `6`" in symbols_md
+    assert "- Classes: `1`" in symbols_md
+    assert "- Functions: `2`" in symbols_md
+    assert "- Async functions: `1`" in symbols_md
+    assert "- Methods: `1`" in symbols_md
+    assert "- Async methods: `1`" in symbols_md
+    assert "### `src/risk/kernel.py`" in symbols_md
+    assert "L3: `class` `RiskKernel`" in symbols_md
+    assert "L4: `method` `RiskKernel`.`score`" in symbols_md
+    assert "L7: `async_method` `RiskKernel`.`async_score`" in symbols_md
+
     architecture = (result.run_dir / "architecture.md").read_text(encoding="utf-8")
     assert "# Architecture Analysis: owner/repo" in architecture
     assert "## Repository Summary" in architecture
@@ -193,6 +232,7 @@ def test_extract_repo_writes_index_combined_tree_metadata_and_files(tmp_path, mo
     assert app_chunk["chunk_index"] == 0
     assert {"repo", "path", "extension", "chunk_index"}.issubset(app_chunk.keys())
     assert any(chunk["path"] == "architecture.md" for chunk in chunks)
+    assert any(chunk["path"] == "symbols.md" for chunk in chunks)
 
     manifest = json.loads((result.run_dir / "semantic_index" / "index_manifest.json").read_text(encoding="utf-8"))
     assert manifest["repo"] == "owner/repo"
@@ -206,6 +246,37 @@ def test_extract_repo_writes_index_combined_tree_metadata_and_files(tmp_path, mo
 
     symbol_results = github_repo_extract.search_repo_semantic_index(result.run_dir, "main", top_k=3)
     assert any(item["symbol_boost"] > 0 for item in symbol_results)
+
+
+def test_extract_python_symbols_from_source_detects_python_symbols():
+    source = """
+class Outer:
+    def method(self, value):
+        return value
+
+    async def async_method(self):
+        return 1
+
+async def top_async():
+    return None
+
+def top_function(a, b=1):
+    return a + b
+"""
+
+    records = github_repo_extract.extract_python_symbols_from_source("owner/repo", "pkg/mod.py", source)
+    keys = {(record.name, record.kind, record.parent_class) for record in records}
+
+    assert ("Outer", "class", None) in keys
+    assert ("method", "method", "Outer") in keys
+    assert ("async_method", "async_method", "Outer") in keys
+    assert ("top_async", "async_function", None) in keys
+    assert ("top_function", "function", None) in keys
+    assert next(record for record in records if record.name == "top_function").preview == "def top_function(a, b=1):"
+
+
+def test_extract_python_symbols_from_source_ignores_syntax_errors():
+    assert github_repo_extract.extract_python_symbols_from_source("owner/repo", "bad.py", "def nope(:\n") == []
 
 
 def test_repo_search_output_includes_required_fields(capsys):
