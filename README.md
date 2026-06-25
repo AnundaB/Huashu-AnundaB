@@ -101,6 +101,12 @@ huashu -x "https://x.com/..."
 # ChatGPT shared conversation
 huashu -chatgpt "https://chatgpt.com/share/..."
 
+# GitHub repository source extraction
+huashu -repo "https://github.com/owner/repo" --max-files 500 --max-file-size-kb 512
+
+# Search latest extracted repository
+huashu -repo-search "risk kernel"
+
 # Optional OCR for an image or scanned PDF
 huashu -ocr path/to/file.png
 
@@ -144,6 +150,16 @@ outputs/auto/
     video/
   chatgpt/
   github/
+    <timestamp>-<owner>-<repo>/
+      repository_index.md
+      architecture.md
+      dependency_graph.md
+      imports.csv
+      combined.md
+      tree.txt
+      repo_metadata.md
+      semantic_index/
+      files/
   research/
   misc/
 ```

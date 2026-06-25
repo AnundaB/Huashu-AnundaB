@@ -10,9 +10,51 @@ import subprocess
 import csv
 import json
 import re
+import shutil
+import tempfile
+import urllib.parse
 
 # Find repository root
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OCR_FALLBACK_NONSPACE_THRESHOLD = 200
+
+
+def should_fallback_to_ocr(markdown_text: str) -> bool:
+    """
+    Returns True when standard extraction produced too little usable text.
+    The heuristic deliberately counts non-whitespace characters so blank or
+    formatting-only Markdown triggers OCR, while normal text PDFs do not.
+    """
+    return len(re.sub(r"\s+", "", markdown_text or "")) < OCR_FALLBACK_NONSPACE_THRESHOLD
+
+
+def slugify_output_name(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9ก-๙._-]+", "-", value).strip("-")
+    return slug[:90] or "content"
+
+
+def is_github_repo_url(url: str) -> bool:
+    """
+    Detects GitHub repository root/tree URLs without capturing issue, blob,
+    pull request, or other non-repository pages.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return False
+
+    netloc = parsed.netloc.lower()
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    if parsed.scheme not in ("http", "https") or netloc != "github.com":
+        return False
+
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2:
+        return False
+    if len(parts) == 2:
+        return True
+    return len(parts) >= 4 and parts[2] == "tree"
 
 def find_input_file(filename: str) -> str | None:
     """
@@ -386,6 +428,79 @@ def run_topics(run_dir: str, extra_args: list[str] = None) -> bool:
         return False
 
 
+def run_local_file_conversion(filename: str) -> int:
+    """
+    Converts a local file via MarkItDown first, then falls back to OCR when
+    the resulting Markdown has too little usable text.
+    """
+    resolved_file = find_input_file(filename)
+    if not resolved_file:
+        return -1
+
+    python_exe = os.path.join(REPO_ROOT, ".venv", "bin", "python3")
+    if not os.path.exists(python_exe):
+        python_exe = sys.executable or "python3"
+
+    print("[web/file] Converting to clean Markdown...")
+
+    any_to_md_script = os.path.join(REPO_ROOT, "scripts", "any_to_md.py")
+    with tempfile.TemporaryDirectory(prefix="huashu-extract-") as tmp_dir:
+        temp_md = os.path.join(tmp_dir, "standard.md")
+        res = subprocess.run([python_exe, any_to_md_script, resolved_file, "-o", temp_md, "--quiet"])
+        if res.returncode != 0:
+            return res.returncode
+
+        try:
+            with open(temp_md, "r", encoding="utf-8", errors="replace") as f:
+                markdown_text = f.read()
+        except OSError as exc:
+            print(f"[error] Failed to read standard extraction output: {exc}")
+            return 1
+
+        if should_fallback_to_ocr(markdown_text):
+            print("[ocr] No usable text detected. Falling back to OCR...")
+            ocr_script = os.path.join(REPO_ROOT, "scripts", "ocr_extract.py")
+            ocr_res = subprocess.run([python_exe, ocr_script, resolved_file])
+            return ocr_res.returncode
+
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+
+        import datetime
+
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        slug = slugify_output_name(os.path.splitext(os.path.basename(resolved_file))[0])
+        md_filename = f"{stamp}-{slug}.md"
+        md_filepath = output_router.route_output(resolved_file, md_filename, "misc")
+        os.makedirs(os.path.dirname(md_filepath), exist_ok=True)
+        shutil.copyfile(temp_md, md_filepath)
+
+    try:
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import output_router
+
+        output_router.register_output(
+            output_path=md_filepath,
+            source=resolved_file,
+            explicit_type="misc",
+            title=os.path.basename(resolved_file),
+            status="success",
+        )
+    except Exception as e:
+        print(f"[warn] Failed to register output in manifest/index: {e}")
+
+    print("")
+    print("Done.")
+    print("Markdown:")
+    print(md_filepath)
+
+    try:
+        subprocess.run(["open", "-R", md_filepath])
+    except Exception:
+        pass
+    return 0
+
+
 def print_help():
     """
     Prints human-friendly CLI usage guidance.
@@ -402,6 +517,8 @@ Usage (Command Line):
   python3 scripts/huashu_cli.py -latest                             Show directories and details of the latest runs.
   python3 scripts/huashu_cli.py -docs <url>                         Force docs crawl of a site.
   python3 scripts/huashu_cli.py -page <url>                         Force single-page web conversion.
+  python3 scripts/huashu_cli.py -repo <github_repo_url>              Extract text source files from a GitHub repository.
+  python3 scripts/huashu_cli.py -repo-search "<query>"               Search the latest extracted repository semantic index.
   python3 scripts/huashu_cli.py -ocr <file>                         Optional OCR for images and scanned PDFs.
   python3 scripts/huashu_cli.py -x <url>                            Force X/Twitter post extraction.
   python3 scripts/huashu_cli.py -x-browser <url>                    Force browser-assisted X/Twitter post extraction.
@@ -617,6 +734,39 @@ def main() -> int:
         res = subprocess.run(cmd)
         return res.returncode
 
+    if arg1 in ("-repo", "--repo", "repo"):
+        if len(sys.argv) < 3:
+            print("[error] Please specify a GitHub repository URL.")
+            print(f"Usage: python3 scripts/huashu_cli.py {sys.argv[1]} <github_repo_url> [--max-files N] [--max-file-size-kb N]")
+            return 1
+        url = sys.argv[2]
+        if not is_github_repo_url(url):
+            print(f"[error] Not a supported GitHub repository URL: {url}")
+            return 1
+        python_exe = sys.executable or "python3"
+        repo_script = os.path.join(REPO_ROOT, "scripts", "github_repo_extract.py")
+        cmd = [python_exe, repo_script, url]
+        cmd.extend(sys.argv[3:])
+        res = subprocess.run(cmd)
+        return res.returncode
+
+    if arg1 in ("-repo-search", "--repo-search", "repo-search"):
+        if len(sys.argv) < 3:
+            print("[error] Please specify a repository search query.")
+            print(f"Usage: python3 scripts/huashu_cli.py {sys.argv[1]} \"<query>\" [--repo-dir DIR] [-k N]")
+            return 1
+        query = sys.argv[2]
+        import argparse
+
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("--repo-dir", default=None)
+        parser.add_argument("-k", "--top-k", type=int, default=5)
+        opts, _ = parser.parse_known_args(sys.argv[3:])
+        sys.path.append(os.path.join(REPO_ROOT, "scripts"))
+        import github_repo_extract
+
+        return github_repo_extract.repo_search(query, run_dir=opts.repo_dir, top_k=opts.top_k)
+
     # Route X-specific commands or clipboard fallbacks first
     is_x_command = arg1 in ("-x", "--x", "-x-browser", "--x-browser")
     is_clipboard_command = arg1 in ("-clipboard", "--clipboard", "-x-clipboard", "--x-clipboard")
@@ -745,8 +895,15 @@ def main() -> int:
             print(f"[error] Invalid URL: {url}")
             return 1
 
+        if is_github_repo_url(url):
+            python_exe = sys.executable or "python3"
+            repo_script = os.path.join(REPO_ROOT, "scripts", "github_repo_extract.py")
+            cmd = [python_exe, repo_script, url]
+            cmd.extend(extra_args)
+            res = subprocess.run(cmd)
+            return res.returncode
+
         # Check if URL is a YouTube URL to route to youtube_extract.py or playlist
-        import urllib.parse
         is_youtube = False
         is_youtube_playlist = False
         try:
@@ -938,6 +1095,10 @@ def main() -> int:
         success = run_topics(run_dir, extra_args)
         return 0 if success else 1
     else:
+        local_file_result = run_local_file_conversion(sys.argv[1])
+        if local_file_result >= 0:
+            return local_file_result
+
         # Route to legacy any-to-markdown/clean Markdown script
         legacy_script = "/Users/AnundaB/bin/huashu"
         if os.path.exists(legacy_script):
