@@ -1,0 +1,152 @@
+engTo/Skills: threejs + animation-on-scroll. No Kage application code/artwork copied.
+    - For production, pin/vendor Three.js locally if the deployment must have zero runtime network dependencies.
+  -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+  (() => {
+    'use strict';
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const canvas = document.querySelector('#aurora-canvas');
+    const body = document.body;
+
+    // Skills-inspired in-view choreography: IntersectionObserver with one-shot reveal.
+    const revealItems = document.querySelectorAll('.reveal');
+    if (reducedMotion || !('IntersectionObserver' in window)) {
+      revealItems.forEach(el => el.classList.add('in-view'));
+    } else {
+      const revealObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in-view');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' });
+      revealItems.forEach(el => revealObserver.observe(el));
+    }
+
+    // Hero intro remains readable even if the WebGL layer fails.
+    requestAnimationFrame(() => body.classList.add('ready'));
+
+    // Active navigation state.
+    const navLinks = [...document.querySelectorAll('.nav-links a[href^="#"]')];
+    const navSections = [...document.querySelectorAll('[data-nav]')];
+    if ('IntersectionObserver' in window) {
+      const navObserver = new IntersectionObserver(entries => {
+        const visible = entries.filter(e => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        const id = visible.target.dataset.nav;
+        navLinks.forEach(link => link.setAttribute('aria-current', String(link.getAttribute('href') === `#${id}`)));
+      }, { threshold: [0.2, 0.45, 0.65], rootMargin: '-15% 0px -45% 0px' });
+      navSections.forEach(section => navObserver.observe(section));
+    }
+
+    // Prototype-only form response.
+    const form = document.querySelector('#tour-form');
+    const status = document.querySelector('#form-status');
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const data = new FormData(form);
+      status.textContent = `Demo request พร้อมแล้ว: ${data.get('month')} · ${data.get('people')} — ยังไม่มีการส่งข้อมูลออกจากหน้าเว็บนี้`;
+    });
+
+    // WebGL world scene. If Three.js or WebGL is unavailable, the CSS background remains as a complete static first frame.
+    if (!window.THREE) {
+      console.warn('Three.js failed to load; static background fallback is active.');
+      return;
+    }
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+    } catch (error) {
+      console.warn('WebGL unavailable; static background fallback is active.', error);
+      return;
+    }
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+    renderer.setClearColor(0x050a10, 1);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x06111a, 0.055);
+
+    const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 100);
+    camera.position.set(0, 0.2, 6.9);
+
+    const auroraUniforms = {
+      uTime: { value: 0 },
+      uScroll: { value: 0 },
+      uPointer: { value: new THREE.Vector2(0, 0) },
+      uResolution: { value: new THREE.Vector2(1, 1) }
+    };
+
+    const auroraVertexShader = `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    const auroraFragmentShader = `
+      precision highp float;
+      varying vec2 vUv;
+      uniform float uTime;
+      uniform float uScroll;
+      uniform vec2 uPointer;
+      uniform vec2 uResolution;
+
+      float hash(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1., 0.)), f.x), mix(hash(i + vec2(0., 1.)), hash(i + vec2(1., 1.)), f.x), f.y);
+      }
+
+      float fbm(vec2 p) {
+        float v = 0.0;
+        float a = 0.5;
+        mat2 r = mat2(0.86, -0.5, 0.5, 0.86);
+        for (int i = 0; i < 5; i++) {
+          v += a * noise(p);
+          p = r * p * 2.02 + 13.7;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      void main() {
+        vec2 uv = vUv;
+        vec2 p = uv * 2.0 - 1.0;
+        float aspect = uResolution.x / max(uResolution.y, 1.0);
+        p.x *= aspect;
+        vec2 pointer = uPointer;
+        pointer.x *= aspect;
+
+        float t = uTime * 0.08;
+        float travel = uScroll * 1.25;
+        float pointerDist = length((p - pointer) * vec2(.82, 1.0));
+        float pointerField = exp(-pointerDist * 2.2);
+
+        vec3 nightTop = vec3(0.02, 0.08, 0.12);
+        vec3 nightLow = vec3(0.01, 0.02, 0.05);
+        vec3 col = mix(nightLow, nightTop, smoothstep(-1.0, 0.85, p.y));
+
+        float n1 = fbm(vec2(p.x * 0.72 + t + pointer.x * 0.16, p.y * 1.28 - t * 0.22 + travel));
+        float n2 = fbm(vec2(p.x * 1.18 - t * 0.48, p.y * 1.90 + t * 0.31));
+        float curve = 0.34 + 0.16 * sin(p.x * 2.15 + n1 * 2.8 + t * 1.6) + (n2 - .5) * .18;
+        curve += (pointer.y - curve) * pointerField * .16;
+
+        float band = exp(-pow(abs(p.y - curve), 1.25) * 7.0);
+        float veil = exp(-pow(abs(p.y - (curve + .20 + .08 * sin(p.x * 3.2 - t))), 1.3) * 9.0);
+        band *= smoothstep(-0.9, 0.12, p.y) * smoothstep(1.15, 0.02, p.y);
+        veil *= smoothstep(-0.6, 0.18, p.y) * smoothstep(1.1, 0.08, p.y);
+        float shimmer = .62 + .38 * fbm(vec2
