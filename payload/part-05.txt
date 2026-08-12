@@ -1,0 +1,94 @@
+y reveal">
+              <div class="day-num">01</div>
+              <div class="day-content">
+                <div><div class="day-kicker">Bangkok → Europe</div><h3>ออกจากกรุงเทพฯ</h3><p>พบทีมทัวร์ที่สนามบินสุวรรณภูมิ ตรวจเอกสารและสัมภาระฤดูหนาว ก่อนออกเดินทางสู่ยุโรปด้วยไฟลต์กลางคืน</p></div>
+                <ul class="day-notes"><li><span>Stay</span><span>Inflight</span></li><li><span>Meal</span><span>ตามสายการบิน</span></li><li><span>Focus</span><span>Travel day</span></li></ul>
+              </div>
+            </article>
+
+            <article class="day reveal">
+              <div class="day-num">02</div>
+              <div class="day-content">
+                <div><div class="day-kicker">Oslo → Tromsø</div><h3>แตะขอบอาร์กติก</h3><p>ต่อเครื่องสู่ Tromsø เข้าที่พัก พักฟื้นจากการเดินทาง และเดินสำรวจเมืองเบา ๆ เพื่อปรับตัวกับความหนาวและแสงกลางวันตามฤดูกาล</p></div>
+                <ul class="day-notes"><li><span>Stay</span><span>Tromsø hotel</span></li><li><span>Plan</span><span>City orientation</span></li><li><span>Evening</span><span>Rest / optional walk</span></li></ul>
+              </div>
+            </article>
+
+            <article class="day reveal">
+              <div class="day-num">03</div>
+              <div class="day-content">
+                <div><div class="day-kicker">Fjord + Chase I</div><h3>ฟยอร์ดกลางวัน<br>ออโรราคืนแรก</h3><p>ออกชมภูมิประเทศชายฝั่งและฟยอร์ด จากนั้นช่วงเย็นออก Aurora Chase กับไกด์ท้องถิ่น โดยเลือกทิศทางจากพยากรณ์เมฆและสภาพถนน</p></div>
+                <ul class="day-notes"><li><span>Stay</span><span>Tromsø hotel</span></li><li><span>Included</span><span>Aurora chase #1</span></li><li><span>Tip</span><span>Tripod + spare battery</span></li></ul>
+              </div>
+            </article>
+
+            <article class="day reveal">
+              <div class="day-num">04</div>
+              <div class="day-content">
+                <div><div class="day-kicker">Arctic activity</div><h3>ฮัสกี้ / หิมะ<br>แล้วพักสายตา</h3><p>เลือกกิจกรรมฤดูหนาว เช่น พบสุนัขฮัสกี้หรือ sledding ตามสภาพพื้นที่ ช่วงค่ำตั้งใจให้เป็นคืนพักหรือคืนสำรอง หากคืนก่อนฟ้าปิด</p></div>
+                <ul class="day-notes"><li><span>Stay</span><span>Tromsø hotel</span></li><li><span>Activity</span><span>Husky / snow</span></li><li><span>Flex</span><span>Weather backup</span></li></ul>
+              </div>
+            </article>
+
+            <article class="day reveal">
+              <div class="day-num">05</div>
+              <div class="day-content">
+                <div><div class="day-kicker">Viewpoint + Chase II</div><h3>มองเมืองจากที่สูง<br>ล่าแสงเหนือรอบสอง</h3><p>ช่วงกลางวันเที่ยวเมืองหรือขึ้นจุดชมวิวเมื่อเปิดให้บริการ เก็บแรงสำหรับ Aurora Chase รอบสอง ซึ่งช่วยเพิ่มโอกาสเมื่อเทียบกับการฝากความหวังไว้คืนเดียว</p></div>
+                <ul class="day-notes"><li><span>Stay</span><span>Tromsø hotel</span></li><li><span>Included</span><span>Aurora chase #2</span></li><li><span>Focus</span><span>Dark-sky locations</span></li></ul>
+              </div>
+            </article>
+
+            <article class="day reveal">
+              <div class="day-num">06</div>
+              <div class="day-content">
+                <div><div class="day-kicker">Tromsø → Bangkok</div><h3>เก็บแสงสุดท้าย<br>แล้วบินกลับ</h3><p>เช็กเอาต์ เดินทางไปสนามบิน Tromsø ต่อเครื่องกลับกรุงเทพฯ เส้นทางและเวลาจริงขึ้นกับสายการบินและวันเดินทาง</p></div>
+                <ul class="day-notes"><li><span>Stay</span><span>Inflight</span></li><li><span>Transfer</span><span>Hotel → TOS</span></li><li><span>Focus</span><span>Return journey</span></li></ul>
+              </div>
+            </article>
+
+            <article class="day reveal">
+              <div class="day-num">07</div>
+              <div class="day-content">
+                <div><div class="day-kicker">Bangkok</div><h3>กลับถึงไทย</h3><p>เดินทางถึงสนามบินสุวรรณภูมิโดยสวัสดิภาพ พร้อมไฟล์ภาพ ความทรงจำ และเรื่องเล่าของคืนที่ท้องฟ้าไม่เหมือนเดิมอีกต่อไป</p></div>
+                <ul class="day-notes"><li><span>End</span><span>Bangkok</span></li><li><span>Note</span><span>Arrival time varies</span></li><li><span>Nights*</span><span>4 hotel + 2 inflight</span></li></ul>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="chase-title">
+        <div class="section-inner">
+          <div class="section-head reveal">
+            <div class="chapter">04 / Aurora Strategy</div>
+            <div><h2 class="section-title" id="chase-title">ไม่ขายคำว่า “การันตี”<br>ขายแผนที่ยืดหยุ่น</h2></div>
+          </div>
+
+          <div class="chase-panel">
+            <article class="tour-card reveal">
+              <div class="chapter">Included</div>
+              <h3>สองคืน<br>เพื่อเพิ่มโอกาส</h3>
+              <div class="chase-number">02</div>
+              <div class="chase-unit">guided chase nights</div>
+            </article>
+            <article class="tour-card reveal">
+              <div class="chapter">Operating principle</div>
+              <h3>ตามฟ้า<br>ไม่ตามโลเคชันตายตัว</h3>
+              <p>ออโรราเป็นปรากฏการณ์ธรรมชาติและการมองเห็นขึ้นกับกิจกรรมแสงเหนือ เมฆ สภาพอากาศ แสงรบกวน และความปลอดภัยของเส้นทาง</p>
+              <ul class="tour-list">
+                <li><span>01</span><span>เช็กเมฆและพยากรณ์ก่อนออกทุกคืน</span></li>
+                <li><span>02</span><span>พร้อมเคลื่อนออกจากตัวเมืองไปจุดท้องฟ้ามืด</span></li>
+                <li><span>03</span><span>มีค่ำคืนยืดหยุ่นหนึ่งช่วงเพื่อสลับกิจกรรมเมื่อสภาพอากาศเปลี่ยน</span></li>
+                <li><span>04</span><span>ไม่รับประกันการเห็นแสงเหนือ เพราะธรรมชาติควบคุมไม่ได้</span></li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="prepare" data-nav="prepare" aria-labelledby="prepare-title">
+        <div class="section-inner">
+          <div class="section-head reveal">
+            <div class="chapter">05 / Prepare</div>
+            <div>
+              <h2 class=
