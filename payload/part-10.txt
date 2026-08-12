@@ -1,0 +1,85 @@
+ointer.y * .12 - currentScroll * .22 + dragVY * 4.0;
+      globeRoot.rotation.x += (targetRotX - globeRoot.rotation.x) * .05;
+      globeRoot.rotation.x = THREE.MathUtils.clamp(globeRoot.rotation.x, -.18, .82);
+      globeRoot.rotation.y += .0015 + dragVX * 1.25;
+      globeRoot.rotation.z = -0.08 + pointer.x * -.04;
+
+      globeRoot.position.x += (pointer.x * .32 - globeRoot.position.x) * .06;
+      globeRoot.position.y += ((0.48 - currentScroll * .95) - globeRoot.position.y) * .05;
+
+      camera.position.x += (pointer.x * .56 - camera.position.x) * .05;
+      camera.position.y += ((0.18 + pointer.y * .18 - currentScroll * .2) - camera.position.y) * .05;
+      camera.position.z += ((6.9 + currentScroll * .8) - camera.position.z) * .04;
+      camera.lookAt(globeRoot.position.x * .14, globeRoot.position.y * .08, 0);
+
+      glow.rotation.z = timeS * .08;
+      glow.scale.setScalar(1 + Math.sin(timeS * .8) * .03 + pulse * .05);
+      glow.material.opacity = .07 + pulse * .04;
+      haloNorth.rotation.y = timeS * .35;
+      haloSouth.rotation.y = -timeS * .28;
+      haloNorth.material.opacity = .22 + Math.sin(timeS * 1.2) * .05 + pulse * .16;
+      haloSouth.material.opacity = .14 + Math.cos(timeS * 1.1) * .04 + pulse * .08;
+
+      auroraBands.forEach((band, i) => {
+        band.mesh.rotation.y = band.seed + timeS * (band.sign > 0 ? .22 : -.18);
+        band.mesh.rotation.z = Math.sin(timeS * .7 + band.seed * 3.1) * .08;
+        band.mesh.scale.setScalar(1 + Math.sin(timeS * 1.5 + i) * .03 + pulse * .08);
+        band.material.opacity = (band.sign > 0 ? .28 : .18) + Math.sin(timeS * 1.8 + band.seed * 4.2) * .08 + pulse * (band.sign > 0 ? .18 : .12);
+      });
+
+      stars.rotation.y = timeS * .01;
+      stars.rotation.x = Math.sin(timeS * .05) * .05;
+      stars.material.opacity = .6 + Math.sin(timeS * .3) * .08;
+
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(render);
+    }
+
+    function renderStill() {
+      globeRoot.position.set(0, .18, 0);
+      camera.position.set(0, .15, 7.2);
+      camera.lookAt(0, 0, 0);
+      haloNorth.material.opacity = .22;
+      haloSouth.material.opacity = .14;
+      auroraUniforms.uTime.value = 5.0;
+      auroraUniforms.uScroll.value = targetScroll;
+      auroraUniforms.uPointer.value.set(0.0, 0.0);
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', resize, { passive: true });
+    window.addEventListener('scroll', updateScroll, { passive: true });
+    if (!reducedMotion) {
+      window.addEventListener('pointermove', handlePointerMove, { passive: true });
+      window.addEventListener('pointerdown', handlePointerDown, { passive: true });
+      window.addEventListener('pointerup', handlePointerUp, { passive: true });
+      window.addEventListener('pointercancel', handlePointerUp, { passive: true });
+      window.addEventListener('pointerleave', handlePointerUp, { passive: true });
+    }
+    document.addEventListener('visibilitychange', () => {
+      visible = !document.hidden;
+      if (visible && !reducedMotion && !raf) raf = requestAnimationFrame(render);
+      if (!visible && raf) { cancelAnimationFrame(raf); raf = 0; }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('scroll', updateScroll);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('pointerleave', handlePointerUp);
+      disposables.forEach(item => item.dispose && item.dispose());
+      renderer.dispose();
+    }, { once: true });
+
+    updateScroll();
+    resize();
+    if (reducedMotion) renderStill();
+    else raf = requestAnimationFrame(render);
+  })();
+  </script>
+</body>
+</html>
