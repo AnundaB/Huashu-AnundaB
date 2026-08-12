@@ -1,1 +1,37 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#060b12"><title>NORTH/TH — Tromsø Aurora 7D6N</title><style>html,body{margin:0;background:#060b12;color:#eef7f3;font-family:system-ui,sans-serif}#boot{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}#boot span{opacity:.72}#boot b{display:block;color:#7df7b9;margin-bottom:10px}</style><script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script></head><body><div id="boot"><span><b>Loading Aurora…</b>Preparing the interactive 3D experience.</span></div><script>(async()=>{try{const source=await fetch('archive.html',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('archive '+r.status);return r.text()});const m=source.match(/const b64='([^']+)'/);if(!m)throw new Error('payload missing');const bytes=Uint8Array.from(atob(m[1]),c=>c.charCodeAt(0));let html;if('DecompressionStream' in window){try{const ds=new DecompressionStream('gzip');html=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).text()}catch(e){console.warn('Native gzip failed, using pako fallback',e)}}if(!html){if(!window.pako)throw new Error('pako unavailable');html=new TextDecoder().decode(window.pako.ungzip(bytes))}document.open();document.write(html);document.close()}catch(e){console.error(e);document.getElementById('boot').innerHTML='<span><b>โหลดเว็บไม่สำเร็จ</b>กรุณา refresh อีกครั้ง หากยังไม่ขึ้นให้แจ้งทีมงาน</span>'}})();</script></body></html>
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060b12">
+  <title>NORTH/TH — Tromsø Aurora 7D6N</title>
+  <style>
+    html,body{margin:0;background:#060b12;color:#eef7f3;font-family:system-ui,sans-serif}
+    #boot{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}
+    #boot span{opacity:.75}#boot b{display:block;color:#7df7b9;margin-bottom:10px;font-size:20px}
+  </style>
+</head>
+<body>
+  <div id="boot"><span><b>Loading Aurora…</b>กำลังโหลดหน้าเว็บโดยตรง</span></div>
+  <script>
+  (async () => {
+    try {
+      const urls = Array.from({length: 11}, (_, i) => `payload/part-${String(i).padStart(2,'0')}.txt?v=4`);
+      const parts = await Promise.all(urls.map(async (url) => {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+        return response.text();
+      }));
+      const html = parts.join('');
+      if (!html.startsWith('<!doctype html>') || !html.includes('</html>')) throw new Error('HTML payload validation failed');
+      document.open();
+      document.write(html);
+      document.close();
+    } catch (error) {
+      console.error('Aurora direct loader failed:', error);
+      document.getElementById('boot').innerHTML = `<span><b>โหลดเว็บไม่สำเร็จ</b>${String(error.message || error)}</span>`;
+    }
+  })();
+  </script>
+</body>
+</html>
