@@ -1,0 +1,71 @@
+"section-title" id="prepare-title">เตรียมให้พร้อม<br>ก่อนตามแสง</h2>
+              <p class="section-lead">ข้อมูลเอกสารและบริการท้องถิ่นเปลี่ยนได้เสมอ หน้าเว็บจึงอ้างอิงหน่วยงานทางการ และไม่ล็อกข้อมูลราคา/ตารางบินที่อาจหมดอายุเร็ว</p>
+            </div>
+          </div>
+
+          <div class="prep-grid">
+            <article class="prep-card reveal"><div class="index">P01</div><h3>Visa</h3><p>ผู้สมัครสัญชาติไทยควรตรวจ Visitor Visa สำหรับ Norway/Schengen จาก UDI และเตรียมเอกสารตามสถานะจริงของผู้เดินทาง</p></article>
+            <article class="prep-card reveal"><div class="index">P02</div><h3>Layering</h3><p>ระบบเลเยอร์สำคัญกว่าความหนาของชิ้นเดียว: base layer, insulation, shell กันลม/หิมะ พร้อมถุงมือและรองเท้าที่เหมาะกับอากาศหนาว</p></article>
+            <article class="prep-card reveal"><div class="index">P03</div><h3>Camera</h3><p>มือถือรุ่นใหม่ถ่ายได้ แต่กล้องที่ตั้ง manual + tripod ช่วยมาก แบตเตอรี่สำรองควรเก็บในกระเป๋าด้านในเพื่อลดการสูญเสียพลังงานจากความเย็น</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section booking" id="booking" aria-labelledby="booking-title">
+        <div class="section-inner booking-grid">
+          <div class="booking-copy reveal">
+            <div class="chapter">06 / Enquiry</div>
+            <h2 id="booking-title">พร้อมออกไป<br>ตามแสงหรือยัง?</h2>
+            <p>ส่งช่วงเดือน จำนวนผู้เดินทาง และความสนใจ เราจะใช้ข้อมูลนี้เป็น brief สำหรับออกแบบแพ็กเกจจริง เช่น ระดับโรงแรม จำนวนคืน Aurora Chase และกิจกรรมกลางวัน</p>
+            <p class="small">* หน้าเว็บนี้เป็น prototype/ตัวอย่างคอนเซปต์ ไม่มีระบบชำระเงินหรือส่งข้อมูลจริง ข้อมูลทัวร์ต้องตรวจสอบไฟลต์ ราคา กิจกรรม และเงื่อนไขวีซ่าอีกครั้งก่อนนำไปขายจริง</p>
+          </div>
+
+          <form class="form-card reveal" id="tour-form">
+            <div class="field"><label for="name">ชื่อ</label><input id="name" name="name" autocomplete="name" required placeholder="ชื่อผู้เดินทาง / ผู้ติดต่อ" /></div>
+            <div class="field"><label for="email">อีเมล</label><input id="email" name="email" type="email" autocomplete="email" required placeholder="you@example.com" /></div>
+            <div class="form-row">
+              <div class="field"><label for="month">ช่วงเดือน</label><select id="month" name="month"><option>กันยายน–ตุลาคม</option><option>พฤศจิกายน–ธันวาคม</option><option>มกราคม–กุมภาพันธ์</option><option>มีนาคม–ต้นเมษายน</option></select></div>
+              <div class="field"><label for="people">จำนวนคน</label><select id="people" name="people"><option>2 คน</option><option>3–4 คน</option><option>5–8 คน</option><option>9+ คน / กรุ๊ป</option></select></div>
+            </div>
+            <div class="field"><label for="note">ความสนใจเพิ่มเติม</label><textarea id="note" name="note" placeholder="เช่น อยากเน้นถ่ายภาพ, husky, โรงแรม 4 ดาว, มีเด็ก/ผู้สูงอายุ"></textarea></div>
+            <button class="button primary" type="submit">สร้าง request ตัวอย่าง <span aria-hidden="true">↗</span></button>
+            <div class="form-status" id="form-status" role="status" aria-live="polite"></div>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-inner">
+        <div>
+          <div class="footer-title">NORTH / TH · Concept Prototype</div>
+          <div class="footer-copy">Original implementation inspired by high-level interaction principles from MengTo/Kage and procedural workflow guidance from MengTo/Skills. Typography has been updated for Thai readability, highlight sections now use real activity photos, and the background scene is now an interactive 3D globe wrapped by aurora bands, with a full aurora sky restored behind it.</div>
+          <nav class="socials" aria-label="โซเชียลมีเดีย">
+            <a class="social-link" href="https://www.instagram.com/" target="_blank" rel="noreferrer" aria-label="Instagram">Instagram</a>
+            <a class="social-link" href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook">Facebook</a>
+            <a class="social-link" href="https://x.com/" target="_blank" rel="noreferrer" aria-label="X">X</a>
+            <a class="social-link" href="https://www.tiktok.com/" target="_blank" rel="noreferrer" aria-label="TikTok">TikTok</a>
+          </nav>
+        </div>
+        <div class="sources">
+          <strong>Travel references</strong><br>
+          <a href="https://www.visittromso.no/northern-lights/when-and-where" target="_blank" rel="noreferrer">Visit Tromsø — when & where</a><br>
+          <a href="https://www.udi.no/en/want-to-apply/visit-and-holiday/visitors-visa-to-norway/?c=tha" target="_blank" rel="noreferrer">UDI — visitor visa, Thailand</a><br><br>
+          <strong>Implementation references</strong><br>
+          <a href="https://github.com/MengTo/kage" target="_blank" rel="noreferrer">MengTo/kage</a> ·
+          <a href="https://github.com/MengTo/skills" target="_blank" rel="noreferrer">MengTo/skills</a><br><br>
+          <strong>Font & photo references</strong><br>
+          <a href="https://fonts.google.com/noto/specimen/Noto+Sans+Thai" target="_blank" rel="noreferrer">Noto Sans Thai</a><br>
+          <a href="https://commons.wikimedia.org/wiki/File:Dog_sledding_in_Rovaniemi_(Unsplash).jpg" target="_blank" rel="noreferrer">Dog sledding photo</a><br>
+          <a href="https://commons.wikimedia.org/wiki/File:Enlightened_(Unsplash).jpg" target="_blank" rel="noreferrer">Aurora silhouette photo</a><br>
+          <a href="https://commons.wikimedia.org/wiki/File:Hiking_(34648732).jpeg" target="_blank" rel="noreferrer">Fjord hiking photo</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!--
+    Implementation notes:
+    - Three.js is loaded as a third-party MIT dependency from CDN; the 3D globe scene, aurora bands, geometry and page code below are original.
+    - High-level design principles referenced from MengTo/kage: fixed environmental canvas, continuous scroll chapters, editorial type, reduced-motion support.
+    - Workflow references from M
