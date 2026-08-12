@@ -1,0 +1,97 @@
+"></div>
+          <div class="strip-item"><span>Booking</span><strong>Flexible dates</strong></div>
+        </div>
+      </section>
+
+      <section class="section" id="route" data-nav="route" aria-labelledby="route-title">
+        <div class="section-inner">
+          <div class="section-head reveal">
+            <div class="chapter">01 / Route</div>
+            <div>
+              <h2 class="section-title" id="route-title">จากกรุงเทพฯ<br>เข้าสู่วงแสงออโรรา</h2>
+              <p class="section-lead">แนวทริปออกแบบให้มีเวลาสำหรับ “การรอ” ซึ่งสำคัญพอ ๆ กับการเดินทาง: บินต่อเครื่องผ่านยุโรป แล้วใช้ Tromsø เป็นฐานสำหรับออกไปหาท้องฟ้าที่เปิดที่สุดในแต่ละคืน</p>
+            </div>
+          </div>
+
+          <div class="route-grid">
+            <article class="route-card reveal">
+              <div class="route-label">Suggested flight flow · times vary by travel date</div>
+              <div class="route-path" aria-label="Bangkok to Oslo to Tromsø">
+                <div><div class="airport-code">BKK</div><div class="route-city">Bangkok</div></div>
+                <div class="route-arrow" aria-hidden="true">→</div>
+                <div class="mid-stop"><div class="airport-code">OSL</div><div class="route-city">Oslo</div></div>
+                <div class="route-arrow mid-arrow" aria-hidden="true">→</div>
+                <div><div class="airport-code">TOS</div><div class="route-city">Tromsø</div></div>
+              </div>
+              <div class="route-foot"><span>ไฟลต์และเวลาต่อเครื่องต้องตรวจสอบตามวันจริง</span><span>Norway · CET/CEST</span></div>
+            </article>
+
+            <div class="facts">
+              <article class="info-card reveal"><div class="info-index">A01</div><div><h3>ฤดูกาลแสงเหนือ</h3><p>Visit Tromsø ระบุว่าสามารถเห็นได้ราวปลายสิงหาคมถึงต้นเมษายน เมื่อท้องฟ้ามืดและโปร่ง</p></div></article>
+              <article class="info-card reveal"><div class="info-index">A02</div><div><h3>ช่วงกลางคืน</h3><p>ออโรราอาจเกิดได้ตลอดคืน จึงควรเลือกทัวร์ที่ยืดหยุ่นและออกจากแสงเมืองเมื่อจำเป็น</p></div></article>
+              <article class="info-card reveal"><div class="info-index">A03</div><div><h3>เอกสารเดินทาง</h3><p>ผู้ถือหนังสือเดินทางไทยควรตรวจเงื่อนไข Visitor Visa/Schengen ล่าสุดจาก UDI ก่อนจอง</p></div></article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="highlights" data-nav="highlights" aria-labelledby="highlights-title">
+        <div class="section-inner">
+          <div class="section-head reveal">
+            <div class="chapter">02 / Highlights</div>
+            <div>
+              <h2 class="section-title" id="highlights-title">รูปจริงของโมเมนต์
+ที่คนอยากไปเจอ</h2>
+              <p class="section-lead">เพิ่ม spot highlight ด้วยภาพถ่ายจริงโทนกิจกรรม เพื่อให้หน้าเว็บสื่ออารมณ์ได้ชัดขึ้น ทั้งการนั่ง husky sled, ยืนดูแสงเหนือ และออกไปเดินชมวิวบนภูมิประเทศแบบนอร์ดิก</p>
+            </div>
+          </div>
+
+          <div class="spot-grid">
+            <article class="spot-card reveal">
+              <img class="spot-media" src="https://commons.wikimedia.org/wiki/Special:FilePath/Dog%20sledding%20in%20Rovaniemi%20%28Unsplash%29.jpg" alt="นักท่องเที่ยวนั่งสุนัขลากเลื่อนบนลานหิมะ" loading="lazy" />
+              <div class="spot-content">
+                <span class="spot-tag">Arctic Activity</span>
+                <h3 class="spot-title">Husky Sledding
+กลางภูมิประเทศหิมะ</h3>
+                <p class="spot-copy">กิจกรรมยอดนิยมสำหรับวันที่อยากสัมผัสอาร์กติกแบบลงมือจริง เหมาะเป็น one of the highlights ของวันที่ 4 พร้อมคอนทราสต์สวยระหว่างท้องฟ้า หิมะ และฝูงฮัสกี้</p>
+                <div class="spot-meta"><span class="spot-pill">Half-day option</span><span class="spot-pill">Photo-friendly</span></div>
+              </div>
+            </article>
+
+            <article class="spot-card reveal">
+              <img class="spot-media" src="https://commons.wikimedia.org/wiki/Special:FilePath/Enlightened%20%28Unsplash%29.jpg" alt="คนยืนมองแสงเหนือในเวลากลางคืน" loading="lazy" />
+              <div class="spot-content">
+                <span class="spot-tag">Night Highlight</span>
+                <h3 class="spot-title">Aurora Watch
+คืนที่ฟ้าเปิดพอดี</h3>
+                <p class="spot-copy">ใช้เป็น visual anchor ของประสบการณ์หลักบนหน้าเว็บได้ดี เพราะมีทั้ง scale ของท้องฟ้าและมนุษย์อยู่ในภาพ ช่วยให้ผู้ชมจินตนาการตัวเองในทริปได้ง่ายขึ้น</p>
+                <div class="spot-meta"><span class="spot-pill">Best after 20:00</span><span class="spot-pill">Tripod recommended</span></div>
+              </div>
+            </article>
+
+            <article class="spot-card reveal">
+              <img class="spot-media" src="https://commons.wikimedia.org/wiki/Special:FilePath/Hiking%20%2834648732%29.jpeg" alt="นักท่องเที่ยวเดินชมวิวภูเขาและฟยอร์ด" loading="lazy" />
+              <div class="spot-content">
+                <span class="spot-tag">Scenic Stop</span>
+                <h3 class="spot-title">Fjord Walk
+และจุดชมวิว</h3>
+                <p class="spot-copy">ภาพกิจกรรมกลางวันช่วยบาลานซ์หน้าเว็บไม่ให้มีแต่ไนต์ช็อตของออโรรา เหมาะกับการเล่าเรื่องวันที่ 3–5 ที่มีทั้ง fjord, viewpoint และเวลาเดินเล่นในธรรมชาติ</p>
+                <div class="spot-meta"><span class="spot-pill">Light trekking</span><span class="spot-pill">Viewpoint content</span></div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="itinerary" data-nav="itinerary" aria-labelledby="itinerary-title">
+        <div class="section-inner">
+          <div class="section-head reveal">
+            <div class="chapter">03 / 7 Chapters</div>
+            <div>
+              <h2 class="section-title" id="itinerary-title">7 วัน<br>ออกแบบรอบท้องฟ้า</h2>
+              <p class="section-lead">โปรแกรมนี้เป็นโครงทัวร์สำหรับทำเว็บไซต์และเสนอขาย ไม่ใช่ตารางบินยืนยัน กิจกรรมกลางแจ้งควรสลับลำดับได้ตามอากาศและความปลอดภัย</p>
+            </div>
+          </div>
+
+          <div class="timeline">
+            <article class="da
