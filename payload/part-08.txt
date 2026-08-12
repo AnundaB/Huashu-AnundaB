@@ -1,0 +1,135 @@
+(p.x * 4.0 + t * 1.7, p.y * 8.0 - t));
+        shimmer *= 1.0 + pointerField * .28;
+
+        vec3 green = vec3(0.21, 1.0, 0.56);
+        vec3 cyan = vec3(0.20, 0.76, 1.0);
+        vec3 aurora = mix(green, cyan, smoothstep(-.5, .9, p.x + n2 * .5));
+        col += aurora * band * shimmer * .94;
+        col += mix(cyan, green, .35) * veil * .30;
+
+        col += vec3(0.03, 0.08, 0.095) * exp(-pow(p.y + .45, 2.0) * 6.0) * .48;
+        float vignette = smoothstep(1.35, .25, length(p * vec2(.72, .92)));
+        col *= .62 + .38 * vignette;
+
+        vec2 starGrid = floor((uv + vec2(0.0, travel * .015)) * vec2(310.0, 190.0));
+        float star = step(.9945, hash(starGrid));
+        float upper = smoothstep(.36, .92, uv.y);
+        col += vec3(star * upper * .58);
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    const disposables = [];
+    const globeRoot = new THREE.Group();
+    scene.add(globeRoot);
+
+    const auroraSkyGeometry = new THREE.PlaneGeometry(24, 14, 1, 1);
+    const auroraSkyMaterial = new THREE.ShaderMaterial({
+      uniforms: auroraUniforms,
+      vertexShader: auroraVertexShader,
+      fragmentShader: auroraFragmentShader,
+      depthWrite: false,
+      depthTest: false
+    });
+    const auroraSky = new THREE.Mesh(auroraSkyGeometry, auroraSkyMaterial);
+    auroraSky.position.set(0, 0.2, -8.2);
+    scene.add(auroraSky);
+    disposables.push(auroraSkyGeometry, auroraSkyMaterial);
+
+    scene.add(new THREE.AmbientLight(0x5dbdd6, 0.78));
+    const keyLight = new THREE.DirectionalLight(0x9fffe2, 1.2);
+    keyLight.position.set(4.5, 3.8, 6.5);
+    scene.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x4fa1ff, 0.72);
+    rimLight.position.set(-5.5, -1.5, 2.8);
+    scene.add(rimLight);
+
+    function makeCanvasTexture() {
+      const c = document.createElement('canvas');
+      c.width = 2048; c.height = 1024;
+      const ctx = c.getContext('2d');
+      const ocean = ctx.createLinearGradient(0, 0, 0, c.height);
+      ocean.addColorStop(0, '#163447');
+      ocean.addColorStop(.45, '#0e2430');
+      ocean.addColorStop(1, '#09131b');
+      ctx.fillStyle = ocean;
+      ctx.fillRect(0, 0, c.width, c.height);
+
+      ctx.globalAlpha = .12;
+      for (let i = 0; i < 5000; i++) {
+        const x = Math.random() * c.width;
+        const y = Math.random() * c.height;
+        const s = Math.random() * 2 + .3;
+        ctx.fillStyle = i % 3 ? '#9effdb' : '#7cc8ff';
+        ctx.fillRect(x, y, s, s);
+      }
+      ctx.globalAlpha = 1;
+
+      function blob(points, fill) {
+        ctx.beginPath();
+        ctx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i++) ctx.bezierCurveTo(...points[i]);
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+      }
+
+      ctx.shadowColor = 'rgba(125, 247, 185, .18)';
+      ctx.shadowBlur = 24;
+      blob([[210,260],[240,170,370,130,430,165],[500,195,530,260,505,330],[490,395,425,430,365,410],[290,392,225,360,215,315],[205,294,198,278,210,260]], '#18392d');
+      blob([[470,240],[520,180,620,160,710,205],[790,250,845,360,804,455],[785,515,722,540,662,520],[610,500,570,470,545,420],[520,365,470,330,470,240]], '#21463b');
+      blob([[750,170],[786,145,850,138,908,164],[958,192,980,240,970,282],[948,332,900,350,856,338],[806,324,784,294,772,250],[760,220,744,195,750,170]], '#2f5d46');
+      blob([[1010,305],[1090,255,1220,265,1290,340],[1355,406,1360,490,1315,555],[1270,617,1170,642,1086,617],[1020,595,978,550,968,486],[955,418,972,352,1010,305]], '#234c3c');
+      blob([[1390,292],[1440,252,1510,252,1576,286],[1624,314,1660,356,1665,402],[1670,450,1640,492,1585,514],[1512,545,1460,530,1420,498],[1382,465,1362,425,1364,382],[1366,338,1372,312,1390,292]], '#2c5a45');
+      blob([[1465,635],[1525,590,1605,595,1680,650],[1720,688,1740,735,1728,790],[1708,840,1664,874,1612,882],[1544,885,1494,858,1465,822],[1432,782,1420,726,1436,688],[1445,665,1450,646,1465,635]], '#1f4334');
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(227, 247, 255, .72)';
+      ctx.beginPath(); ctx.ellipse(1024, 108, 410, 70, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(1024, 918, 365, 64, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(135, 213, 255, .12)';
+      ctx.fillRect(0, 0, c.width, c.height);
+
+      const texture = new THREE.CanvasTexture(c);
+      texture.anisotropy = 4;
+      texture.needsUpdate = true;
+      disposables.push(texture);
+      return texture;
+    }
+
+    const earthGeometry = new THREE.SphereGeometry(1.34, 72, 72);
+    const earthMaterial = new THREE.MeshStandardMaterial({
+      map: makeCanvasTexture(),
+      roughness: .93,
+      metalness: .02,
+      emissive: 0x061717,
+      emissiveIntensity: .24
+    });
+    const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+    globeRoot.add(earth);
+    disposables.push(earthGeometry, earthMaterial);
+
+    const atmosphereGeometry = new THREE.SphereGeometry(1.42, 48, 48);
+    const atmosphereMaterial = new THREE.MeshBasicMaterial({
+      color: 0x76ffe0,
+      transparent: true,
+      opacity: .08,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending
+    });
+    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    globeRoot.add(atmosphere);
+    disposables.push(atmosphereGeometry, atmosphereMaterial);
+
+    const wireGeometry = new THREE.SphereGeometry(1.38, 28, 24);
+    const wireMaterial = new THREE.MeshBasicMaterial({ color: 0x79cfff, wireframe: true, transparent: true, opacity: .07 });
+    const wire = new THREE.Mesh(wireGeometry, wireMaterial);
+    globeRoot.add(wire);
+    disposables.push(wireGeometry, wireMaterial);
+
+    const glowGeometry = new THREE.RingGeometry(1.62, 2.3, 96);
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: 0x84f1ff, transparent: true, opacity: .08, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.rotation.x = Math.PI * 0.5;
+    glow.position.y = -.15;
