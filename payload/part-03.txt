@@ -1,0 +1,124 @@
+ background .25s ease;
+    }
+    .social-link:hover {
+      transform: translateY(-2px);
+      border-color: var(--aurora);
+      color: var(--ink);
+      background: rgba(125,247,185,.08);
+    }
+    .sources { font-size: 11px; color: var(--muted); }
+    .sources a { text-decoration: underline; text-underline-offset: 3px; }
+
+    .thai-display,
+    .section-title,
+    .day h3,
+    .tour-card h3,
+    .spot-title,
+    .booking-copy h2,
+    .prep-card h3 {
+      font-variant-ligatures: none;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    .reveal { opacity: 0; transform: translateY(24px); filter: blur(7px); transition: opacity .8s cubic-bezier(.22,1,.36,1), transform .8s cubic-bezier(.22,1,.36,1), filter .8s cubic-bezier(.22,1,.36,1); }
+    .reveal.in-view { opacity: 1; transform: translateY(0); filter: blur(0); }
+
+    .hero-word { display: inline-block; opacity: 0; transform: translateY(22px); filter: blur(7px); }
+    .ready .hero-word { animation: heroIn .9s cubic-bezier(.22,1,.36,1) forwards; }
+    .ready .hero-word:nth-child(2) { animation-delay: .09s; }
+    .ready .hero-word:nth-child(3) { animation-delay: .18s; }
+    .ready .hero-word:nth-child(4) { animation-delay: .27s; }
+    @keyframes heroIn { to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+
+    @media (max-width: 900px) {
+      .nav-links a:not(.nav-cta) { display: none; }
+      .hero { padding-top: 118px; min-height: 105svh; }
+      .hero-bottom, .route-grid, .chase-panel, .booking-grid, .spot-grid { grid-template-columns: 1fr; }
+      .strip-inner { grid-template-columns: 1fr 1fr; }
+      .strip-item:nth-child(3) { border-left: 1px solid var(--line); }
+      .section-head { grid-template-columns: 1fr; gap: 12px; }
+      .day { grid-template-columns: 72px 1fr; gap: 18px; }
+      .day-content { grid-template-columns: 1fr; }
+      .prep-grid { grid-template-columns: 1fr; gap: 38px; }
+      .route-path { grid-template-columns: 1fr auto 1fr; }
+      .route-path .mid-stop { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+      .route-path .mid-arrow { display: none; }
+    }
+
+    @media (max-width: 580px) {
+      :root { --pad: 18px; --radius: 14px; }
+      .nav { padding-top: 14px; padding-bottom: 14px; }
+      .brand span:last-child { display: none; }
+      .nav-cta { min-height: 40px; padding: 0 14px; font-size: 12px; }
+      .hero-title { font-size: clamp(58px, 22vw, 104px); line-height: .86; }
+      .hero-bottom { margin-top: 28px; }
+      .hero-meta { grid-template-columns: 1fr 1fr; }
+      .strip-inner { width: 100%; }
+      .strip-item { padding: 14px 18px; }
+      .day { grid-template-columns: 1fr; }
+      .day-num { position: static; font-size: 36px; }
+      .spot-card { min-height: 420px; }
+      .route-card { min-height: 360px; }
+      .airport-code { font-size: 42px; }
+      .route-foot { flex-direction: column; }
+      .form-row { grid-template-columns: 1fr; }
+      .footer-inner { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+      .reveal, .hero-word { opacity: 1 !important; transform: none !important; filter: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="aurora-canvas" aria-hidden="true"></canvas>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="site">
+    <header class="nav" aria-label="เมนูหลัก">
+      <a class="brand" href="#top" aria-label="NORTH TH หน้าหลัก">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>NORTH / TH</span>
+      </a>
+      <nav class="nav-links" aria-label="ส่วนต่าง ๆ ของหน้า">
+        <a href="#route">เส้นทาง</a>
+        <a href="#highlights">ไฮไลต์</a>
+        <a href="#itinerary">โปรแกรม</a>
+        <a href="#prepare">เตรียมตัว</a>
+        <a class="nav-cta" href="#booking">รับรายละเอียดทัวร์</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-inner">
+          <div class="eyebrow">Tromsø · Northern Norway · 7 Days / 6 Nights</div>
+          <h1 class="hero-title" id="hero-title" aria-label="Chase The Light Tromsø">
+            <span class="hero-word">CHASE</span><br>
+            <span class="hero-word ghost">THE</span> <span class="hero-word">LIGHT</span><br>
+            <span class="hero-word">TROMSØ</span>
+          </h1>
+          <div class="hero-bottom">
+            <div>
+              <p class="hero-copy">ทริปตัวอย่างจากกรุงเทพฯ สู่เมืองเหนือเส้นอาร์กติก — <strong>ล่าแสงเหนือ 2 คืน</strong> พร้อมวันสำรอง ยืดหยุ่นตามเมฆและสภาพอากาศ</p>
+              <div class="scroll-note"><span class="scroll-line"></span><span>เลื่อนเพื่อเข้าสู่เส้นทาง 7 วัน</span><span class="aurora-interact">ขยับเมาส์ / แตะ / ลาก เพื่อหมุนโลกและเล่นกับแสงเหนือ</span></div>
+            </div>
+            <div class="hero-meta">
+              <div class="meta-item"><div class="meta-label">ระยะเวลา</div><div class="meta-value">7 วัน 6 คืน*</div></div>
+              <div class="meta-item"><div class="meta-label">จุดหมาย</div><div class="meta-value">Tromsø, Norway</div></div>
+              <div class="meta-item"><div class="meta-label">ฤดูกาล</div><div class="meta-value">ก.ย. – ต้น เม.ย.</div></div>
+              <div class="meta-item"><div class="meta-label">ออกเดินทาง</div><div class="meta-value">Bangkok (BKK)</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="strip" aria-label="ข้อมูลแพ็กเกจย่อ">
+        <div class="strip-inner">
+          <div class="strip-item"><span>Experience</span><strong>Aurora chase × 2</strong></div>
+          <div class="strip-item"><span>Arctic day</span><strong>Husky / Fjord</strong></div>
+          <div class="strip-item"><span>Nights</span><strong>4 hotel + 2 inflight*</strong
