@@ -1,0 +1,152 @@
+ding-top: 24px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(240px, .75fr);
+      gap: clamp(28px, 6vw, 88px);
+      align-items: end;
+    }
+
+    .hero-copy { max-width: 720px; font-size: clamp(18px, 2.2vw, 29px); line-height: 1.6; letter-spacing: -.01em; }
+    .hero-copy strong { color: var(--aurora); font-weight: 720; }
+
+    .hero-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .meta-item { padding-top: 12px; border-top: 1px solid var(--line); }
+    .meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+    .meta-value { margin-top: 6px; font-size: 15px; }
+
+    .scroll-note { margin-top: 38px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; color: var(--muted); font-size: 12px; }
+    .scroll-line { width: 70px; height: 1px; background: linear-gradient(90deg, var(--aurora), transparent); }
+    .aurora-interact {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 11px;
+      border: 1px solid rgba(125,247,185,.22);
+      border-radius: 999px;
+      color: rgba(238,247,243,.82);
+      background: rgba(5,10,16,.28);
+      backdrop-filter: blur(10px);
+    }
+    .aurora-interact::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--aurora);
+      box-shadow: 0 0 14px rgba(125,247,185,.8);
+      animation: auroraHint 1.8s ease-in-out infinite;
+    }
+    @keyframes auroraHint {
+      0%, 100% { transform: scale(.72); opacity: .55; }
+      50% { transform: scale(1.15); opacity: 1; }
+    }
+
+    .strip {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(4, 9, 15, .54);
+      backdrop-filter: blur(16px);
+    }
+    .strip-inner {
+      width: min(var(--max), calc(100% - 2 * var(--pad)));
+      margin: 0 auto;
+      min-height: 84px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+    }
+    .strip-item { padding: 18px 20px; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid var(--line); }
+    .strip-item:first-child { border-left: 1px solid var(--line); }
+    .strip-item span { color: var(--muted); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+    .strip-item strong { margin-top: 5px; font-size: 15px; font-weight: 620; }
+
+    .section { padding: clamp(96px, 12vw, 180px) var(--pad); }
+    .section-inner { width: min(var(--max), 100%); margin: 0 auto; }
+    .section-head { display: grid; grid-template-columns: 180px 1fr; gap: 28px; margin-bottom: clamp(48px, 8vw, 100px); }
+    .chapter { font-size: 11px; color: var(--aurora); letter-spacing: .16em; text-transform: uppercase; padding-top: 12px; }
+    .section-title { margin: 0; font-family: var(--font-display-thai); font-size: clamp(40px, 7vw, 96px); letter-spacing: -.045em; line-height: 1.16; text-wrap: balance; max-width: 980px; }
+    .section-lead { margin-top: 24px; max-width: 720px; color: #c5d0d6; font-size: clamp(17px, 2vw, 24px); line-height: 1.78; }
+
+    .route-grid {
+      display: grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap: 24px;
+    }
+    .route-card, .info-card, .tour-card, .form-card {
+      border: 1px solid var(--line);
+      background: rgba(5, 11, 18, .58);
+      backdrop-filter: blur(18px);
+      border-radius: var(--radius);
+    }
+    .route-card { min-height: 430px; padding: clamp(24px, 4vw, 54px); display: flex; flex-direction: column; justify-content: space-between; }
+    .route-label { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+    .route-path { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 14px; margin: 46px 0; }
+    .airport-code { font-family: var(--font-display-latin); font-size: clamp(40px, 7vw, 90px); letter-spacing: -.06em; line-height: .94; font-weight: 780; }
+    .route-arrow { color: var(--aurora); font-size: 26px; }
+    .route-city { margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .route-foot { padding-top: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 20px; color: #c7d2d8; font-size: 14px; }
+
+    .facts { display: grid; gap: 16px; }
+
+    .spot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .spot-card {
+      position: relative;
+      min-height: 460px;
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      overflow: hidden;
+      background: #08111a;
+      isolation: isolate;
+      display: grid;
+      align-items: end;
+    }
+    .spot-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background: linear-gradient(180deg, rgba(4, 9, 15, .04) 0%, rgba(4, 9, 15, .14) 28%, rgba(4, 9, 15, .84) 100%);
+    }
+    .spot-media {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.01);
+      transition: transform .8s cubic-bezier(.22,1,.36,1), filter .4s ease;
+      filter: saturate(.92) contrast(1.05);
+    }
+    .spot-card:hover .spot-media { transform: scale(1.06); filter: saturate(1) contrast(1.08); }
+    .spot-content {
+      position: relative;
+      z-index: 2;
+      padding: clamp(22px, 3.6vw, 34px);
+      display: grid;
+      gap: 14px;
+    }
+    .spot-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px;
+      background: rgba(7, 13, 20, .38);
+      backdrop-filter: blur(14px);
+      color: rgba(238,247,243,.86);
+      font-size: 11px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .spot-title {
+      margin: 0;
+      font-family: var(--font-display
